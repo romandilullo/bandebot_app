@@ -36,7 +36,7 @@ public:
         bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::WaitingMobileBaseReady;
 
         // Create publishers
-        bandebot_app_state_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("bandebot/bandebot_app_state", 10);
+        bandebot_app_state_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("bandebot/app_state", 10);
         requested_tray_position_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("bandebot/requested_tray_position", 10);
         tray_illumination_requested_state_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("bandebot/tray_illumination_requested_state", 10);
         robot_hardware_status_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::RobotHardwareStatus>("bandebot/robot_hardware_status", 10);
@@ -44,7 +44,7 @@ public:
         // Create subscribers
 
         mulita_robot_state_subscriber_ = this->create_subscription<rogue_droids_interfaces::msg::CanFrame>(
-            "bandebot/mulita_robot_state", 10, std::bind(&BandebotNode::on_mulita_robot_state, this, std::placeholders::_1));
+            "mulita/mobile_base_state", 10, std::bind(&BandebotNode::on_mulita_robot_state, this, std::placeholders::_1));
             
         tray_content_state_subscriber_ = this->create_subscription<rogue_droids_interfaces::msg::CanFrame>(
             "bandebot/tray_content_state", 10, std::bind(&BandebotNode::on_tray_content_state, this, std::placeholders::_1));
@@ -62,10 +62,10 @@ public:
             "bandebot/tray_measured_distance", 10, std::bind(&BandebotNode::on_tray_measured_distance, this, std::placeholders::_1));
     
         power_supply_state_subscriber_ = this->create_subscription<rogue_droids_interfaces::msg::CanFrame>(
-            "bandebot/power_supply_state", 10, std::bind(&BandebotNode::on_power_supply_state, this, std::placeholders::_1));
+            "mulita/power_supply_state", 10, std::bind(&BandebotNode::on_power_supply_state, this, std::placeholders::_1));
     
         hw_id_information_subscriber_ = this->create_subscription<rogue_droids_interfaces::msg::CanFrame>(
-            "bandebot/hw_id_information", 10, std::bind(&BandebotNode::on_hw_id_information, this, std::placeholders::_1));
+            "mulita/hw_id_information", 10, std::bind(&BandebotNode::on_hw_id_information, this, std::placeholders::_1));
 
 
         // Create services
