@@ -70,31 +70,31 @@ public:
 
         // Create services
         srv_calibrate_ = this->create_service<rogue_droids_interfaces::srv::Calibrate>(
-            this->get_name() + std::string("calibrate"),
+            std::string("bandebot/calibrate"),
             std::bind(&BandebotNode::handle_srv_calibrate, this, std::placeholders::_1, std::placeholders::_2));
 
         srv_start_loading_ = this->create_service<rogue_droids_interfaces::srv::StartLoading>(
-            this->get_name() + std::string("start_loading"),
+            std::string("bandebot/start_loading"),
             std::bind(&BandebotNode::handle_srv_start_loading_, this, std::placeholders::_1, std::placeholders::_2));
 
         srv_stop_loading_ = this->create_service<rogue_droids_interfaces::srv::StopLoading>(
-            this->get_name() + std::string("stop_loading"),
+            std::string("bandebot/stop_loading"),
             std::bind(&BandebotNode::handle_srv_stop_loading_, this, std::placeholders::_1, std::placeholders::_2));
 
         srv_start_unloading_ = this->create_service<rogue_droids_interfaces::srv::StartUnloading>(
-            this->get_name() + std::string("start_unloading"),
+            std::string("bandebot/start_unloading"),
             std::bind(&BandebotNode::handle_srv_start_unloading_, this, std::placeholders::_1, std::placeholders::_2));
 
         srv_stop_unloading_ = this->create_service<rogue_droids_interfaces::srv::StopUnloading>(
-            this->get_name() + std::string("stop_unloading"),
+            std::string("bandebot/stop_unloading"),
             std::bind(&BandebotNode::handle_srv_stop_unloading_, this, std::placeholders::_1, std::placeholders::_2));
         
         srv_start_serving_ = this->create_service<rogue_droids_interfaces::srv::StartServing>(
-            this->get_name() + std::string("start_serving"),
+            std::string("bandebot/start_serving"),
             std::bind(&BandebotNode::handle_srv_start_serving_, this, std::placeholders::_1, std::placeholders::_2));
         
         srv_stop_serving_ = this->create_service<rogue_droids_interfaces::srv::StopServing>(
-            this->get_name() + std::string("stop_serving"),
+            std::string("bandebot/stop_serving"),
             std::bind(&BandebotNode::handle_srv_stop_serving_, this, std::placeholders::_1, std::placeholders::_2));
         
         operation_start_time_ = rclcpp::Clock().now();
