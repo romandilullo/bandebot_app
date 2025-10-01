@@ -9,12 +9,15 @@
 
 #include <chrono>
 #include <memory>
+#include <cmath>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <rogue_droids_interfaces/msg/can_frame.hpp>
 #include <rogue_droids_interfaces/srv/start_catering.hpp>
 #include <rogue_droids_interfaces/srv/stop_catering.hpp>
 #include <rogue_droids_interfaces/srv/start_serving.hpp>
 #include <rogue_droids_interfaces/srv/stop_serving.hpp>
+#include <rogue_droids_interfaces/action/go_to_relative_pose.hpp>
 #include "../../mulita/include/mulita_defines.h"
 #include "../../mulita/include/bandebot_defines.h"
 
@@ -53,6 +56,10 @@ public:
         start_serving_client_ = this->create_client<rogue_droids_interfaces::srv::StartServing>("bandebot/start_serving");
         stop_serving_client_ = this->create_client<rogue_droids_interfaces::srv::StopServing>("bandebot/stop_serving");
         
+        // Create action client for navigation
+        navigation_action_client_ = rclcpp_action::create_client<rogue_droids_interfaces::action::GoToRelativePose>(
+            this, "go_to_relative_pose");
+        
         // Create timer for state machine
         state_timer_ = this->create_wall_timer(
             100ms, std::bind(&CateringNode::state_machine_callback, this));
@@ -77,7 +84,13 @@ private:
     rclcpp::Service<rogue_droids_interfaces::srv::StopCatering>::SharedPtr stop_catering_service_;
     rclcpp::Client<rogue_droids_interfaces::srv::StartServing>::SharedPtr start_serving_client_;
     rclcpp::Client<rogue_droids_interfaces::srv::StopServing>::SharedPtr stop_serving_client_;
+    rclcpp_action::Client<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr navigation_action_client_;
     rclcpp::TimerBase::SharedPtr state_timer_;
+    
+    // Action state variables
+    rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr current_goal_handle_;
+    bool action_completed_ = false;
+    bool action_succeeded_ = false;
     
     void app_state_callback(const rogue_droids_interfaces::msg::CanFrame::SharedPtr msg) {
         if (msg->len >= 1) {
@@ -207,6 +220,81 @@ private:
             });
     }
     
+    void call_navigation_action(double x, double y, double theta) {
+        if (!navigation_action_client_->wait_for_action_server(std::chrono::seconds(1))) {
+            RCLCPP_WARN(this->get_logger(), "Navigation action server not available");
+            action_completed_ = true;
+            action_succeeded_ = false;
+            return;
+        }
+        
+        auto goal_msg = rogue_droids_interfaces::action::GoToRelativePose::Goal();
+        goal_msg.x = x;
+        goal_msg.y = y;
+        goal_msg.theta = theta;
+        
+        auto send_goal_options = rclcpp_action::Client<rogue_droids_interfaces::action::GoToRelativePose>::SendGoalOptions();
+        
+        send_goal_options.goal_response_callback = 
+            [this](const rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr & goal_handle) {
+                if (!goal_handle) {
+                    RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
+                    action_completed_ = true;
+                    action_succeeded_ = false;
+                } else {
+                    RCLCPP_INFO(this->get_logger(), "Goal accepted by server, waiting for result");
+                    current_goal_handle_ = goal_handle;
+                }
+            };
+            
+        send_goal_options.feedback_callback = 
+            [this](rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr,
+                   const std::shared_ptr<const rogue_droids_interfaces::action::GoToRelativePose::Feedback> feedback) {
+                RCLCPP_DEBUG(this->get_logger(), "Navigation feedback: distance remaining: %.2f", 
+                           feedback->distance_remaining);
+            };
+            
+        send_goal_options.result_callback = 
+            [this](const rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::WrappedResult & result) {
+                action_completed_ = true;
+                switch(result.code) {
+                    case rclcpp_action::ResultCode::SUCCEEDED:
+                        RCLCPP_INFO(this->get_logger(), "Navigation action succeeded");
+                        action_succeeded_ = true;
+                        break;
+                    case rclcpp_action::ResultCode::ABORTED:
+                        RCLCPP_WARN(this->get_logger(), "Navigation action was aborted");
+                        action_succeeded_ = false;
+                        break;
+                    case rclcpp_action::ResultCode::CANCELED:
+                        RCLCPP_WARN(this->get_logger(), "Navigation action was canceled");
+                        action_succeeded_ = false;
+                        break;
+                    default:
+                        RCLCPP_ERROR(this->get_logger(), "Unknown navigation action result code");
+                        action_succeeded_ = false;
+                        break;
+                }
+                current_goal_handle_.reset();
+            };
+        
+        // Reset action state
+        action_completed_ = false;
+        action_succeeded_ = false;
+        
+        // Send the goal (async_send_goal returns a future, we handle it in the goal_response_callback)
+        navigation_action_client_->async_send_goal(goal_msg, send_goal_options);
+        
+        RCLCPP_INFO(this->get_logger(), "Sent navigation goal: x=%.2f, y=%.2f, theta=%.2f", x, y, theta);
+    }
+    
+    void cancel_navigation_action() {
+        if (current_goal_handle_) {
+            RCLCPP_INFO(this->get_logger(), "Canceling navigation action");
+            navigation_action_client_->async_cancel_goal(current_goal_handle_);
+        }
+    }
+    
     void setState(CateringState new_state) {
         if (current_state_ != new_state) {
             RCLCPP_INFO(this->get_logger(), "State transition: %s -> %s", 
@@ -242,25 +330,53 @@ private:
                 // Simulate finding an empty spot (placeholder logic)
                 if (elapsed_in_state >= 3) { // 3 seconds to find a spot
                     setState(CateringState::MovingToEmptySpot);
+                    // Call navigation action: x=1, y=0, theta=pi (temporary test code)
+                    call_navigation_action(1.0, 0.0, M_PI);
                     RCLCPP_INFO(this->get_logger(), "Empty spot found, moving to position");
                 }
                 break;
                 
             case CateringState::MovingToEmptySpot:
-                // Simulate moving to the empty spot (placeholder logic)
-                if (elapsed_in_state >= 5) { // 5 seconds to move
+                // Monitor navigation action and timeout
+                if (action_completed_) {
+                    if (action_succeeded_) {
+                        RCLCPP_INFO(this->get_logger(), "Successfully arrived at target position");
+                    } else {
+                        RCLCPP_WARN(this->get_logger(), "Navigation action failed");
+                    }
+                    // Either way, proceed to calling attention with 360° turn
                     setState(CateringState::CallingAttention);
-                    RCLCPP_INFO(this->get_logger(), "Arrived at position, calling attention");
+                    call_navigation_action(0.0, 0.0, 2.0 * M_PI); // 360° turn
+                    RCLCPP_INFO(this->get_logger(), "Starting attention-calling 360° turn");
+                } else if (elapsed_in_state >= 15) { // 15 second timeout
+                    RCLCPP_WARN(this->get_logger(), "Navigation timeout reached, canceling action");
+                    cancel_navigation_action();
+                    setState(CateringState::CallingAttention);
+                    call_navigation_action(0.0, 0.0, 2.0 * M_PI); // 360° turn
+                    RCLCPP_INFO(this->get_logger(), "Starting attention-calling 360° turn after timeout");
                 }
                 break;
                 
             case CateringState::CallingAttention:
-                // Simulate calling attention (placeholder logic)
-                if (elapsed_in_state >= 2) { // 2 seconds to call attention
+                // Monitor the 360° turn action
+                if (action_completed_) {
+                    if (action_succeeded_) {
+                        RCLCPP_INFO(this->get_logger(), "360° attention turn completed successfully");
+                    } else {
+                        RCLCPP_WARN(this->get_logger(), "360° attention turn failed");
+                    }
+                    // Either way, proceed to serving food
                     setState(CateringState::ServingFood);
                     serving_food_start_time_ = std::chrono::steady_clock::now();
                     call_start_serving(); // Call bandebot/start_serving when entering ServingFood
                     RCLCPP_INFO(this->get_logger(), "Attention called, now serving food");
+                } else if (elapsed_in_state >= 15) { // 15 second timeout
+                    RCLCPP_WARN(this->get_logger(), "Attention turn timeout reached, canceling action");
+                    cancel_navigation_action();
+                    setState(CateringState::ServingFood);
+                    serving_food_start_time_ = std::chrono::steady_clock::now();
+                    call_start_serving(); // Call bandebot/start_serving when entering ServingFood
+                    RCLCPP_INFO(this->get_logger(), "Proceeding to serving food after timeout");
                 }
                 break;
                 
