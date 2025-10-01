@@ -13,6 +13,8 @@
 #include <rogue_droids_interfaces/msg/can_frame.hpp>
 #include <rogue_droids_interfaces/srv/start_catering.hpp>
 #include <rogue_droids_interfaces/srv/stop_catering.hpp>
+#include <rogue_droids_interfaces/srv/start_serving.hpp>
+#include <rogue_droids_interfaces/srv/stop_serving.hpp>
 #include "../../mulita/include/mulita_defines.h"
 #include "../../mulita/include/bandebot_defines.h"
 
@@ -47,6 +49,10 @@ public:
             "stop_catering", 
             std::bind(&CateringNode::handle_stop_catering, this, std::placeholders::_1, std::placeholders::_2));
         
+        // Create service clients for bandebot serving
+        start_serving_client_ = this->create_client<rogue_droids_interfaces::srv::StartServing>("bandebot/start_serving");
+        stop_serving_client_ = this->create_client<rogue_droids_interfaces::srv::StopServing>("bandebot/stop_serving");
+        
         // Create timer for state machine
         state_timer_ = this->create_wall_timer(
             100ms, std::bind(&CateringNode::state_machine_callback, this));
@@ -61,14 +67,16 @@ private:
     
     // Catering parameters
     float catering_radius_;
-    float catering_time_;
-    std::chrono::steady_clock::time_point catering_start_time_;
+    float on_spot_catering_time_;
+    std::chrono::steady_clock::time_point serving_food_start_time_;
     std::chrono::steady_clock::time_point state_start_time_;
     
     // ROS2 components
     rclcpp::Subscription<rogue_droids_interfaces::msg::CanFrame>::SharedPtr app_state_subscriber_;
     rclcpp::Service<rogue_droids_interfaces::srv::StartCatering>::SharedPtr start_catering_service_;
     rclcpp::Service<rogue_droids_interfaces::srv::StopCatering>::SharedPtr stop_catering_service_;
+    rclcpp::Client<rogue_droids_interfaces::srv::StartServing>::SharedPtr start_serving_client_;
+    rclcpp::Client<rogue_droids_interfaces::srv::StopServing>::SharedPtr stop_serving_client_;
     rclcpp::TimerBase::SharedPtr state_timer_;
     
     void app_state_callback(const rogue_droids_interfaces::msg::CanFrame::SharedPtr msg) {
@@ -99,7 +107,7 @@ private:
         }
         
         // Validate parameters
-        if (request->catering_radius <= 0.0 || request->catering_time <= 0.0) {
+        if (request->catering_radius <= 0.0 || request->on_spot_catering_time <= 0.0) {
             response->success = false;
             response->message = "Invalid catering parameters (must be > 0)";
             RCLCPP_WARN(this->get_logger(), "Start catering rejected: Invalid parameters");
@@ -108,16 +116,15 @@ private:
         
         // Store catering parameters
         catering_radius_ = request->catering_radius;
-        catering_time_ = request->catering_time;
-        catering_start_time_ = std::chrono::steady_clock::now();
+        on_spot_catering_time_ = request->on_spot_catering_time;
         
         // Transition to FindingEmptySpot state
         setState(CateringState::FindingEmptySpot);
         
         response->success = true;
         response->message = "Catering started successfully";
-        RCLCPP_INFO(this->get_logger(), "Catering started - Radius: %.2fm, Time: %.2fs", 
-                   catering_radius_, catering_time_);
+        RCLCPP_INFO(this->get_logger(), "Catering started - Radius: %.2fm, On-spot time: %.2fs", 
+                   catering_radius_, on_spot_catering_time_);
     }
     
     void handle_stop_catering(
@@ -133,12 +140,71 @@ private:
             return;
         }
         
+        // Can only stop catering if in ServingFood state
+        if (current_state_ != CateringState::ServingFood) {
+            response->success = false;
+            response->message = "Can only stop catering when in ServingFood state";
+            RCLCPP_WARN(this->get_logger(), "Stop catering rejected: Not in ServingFood state");
+            return;
+        }
+        
+        // Call stop serving before returning to Standby
+        call_stop_serving();
+        
         // Return to Standby state
         setState(CateringState::Standby);
         
         response->success = true;
         response->message = "Catering stopped successfully";
         RCLCPP_INFO(this->get_logger(), "Catering stopped");
+    }
+    
+    void call_start_serving() {
+        if (!start_serving_client_->wait_for_service(std::chrono::seconds(1))) {
+            RCLCPP_WARN(this->get_logger(), "bandebot/start_serving service not available");
+            return;
+        }
+        
+        auto request = std::make_shared<rogue_droids_interfaces::srv::StartServing::Request>();
+        request->mode = 0; // Default mode
+        
+        start_serving_client_->async_send_request(request,
+            [this](rclcpp::Client<rogue_droids_interfaces::srv::StartServing>::SharedFuture result) {
+                try {
+                    auto response = result.get();
+                    if (response->success) {
+                        RCLCPP_INFO(this->get_logger(), "Successfully called bandebot/start_serving");
+                    } else {
+                        RCLCPP_WARN(this->get_logger(), "Failed to call bandebot/start_serving");
+                    }
+                } catch (const std::exception &e) {
+                    RCLCPP_ERROR(this->get_logger(), "Exception calling bandebot/start_serving: %s", e.what());
+                }
+            });
+    }
+    
+    void call_stop_serving() {
+        if (!stop_serving_client_->wait_for_service(std::chrono::seconds(1))) {
+            RCLCPP_WARN(this->get_logger(), "bandebot/stop_serving service not available");
+            return;
+        }
+        
+        auto request = std::make_shared<rogue_droids_interfaces::srv::StopServing::Request>();
+        request->mode = 0; // Default mode
+        
+        stop_serving_client_->async_send_request(request,
+            [this](rclcpp::Client<rogue_droids_interfaces::srv::StopServing>::SharedFuture result) {
+                try {
+                    auto response = result.get();
+                    if (response->success) {
+                        RCLCPP_INFO(this->get_logger(), "Successfully called bandebot/stop_serving");
+                    } else {
+                        RCLCPP_WARN(this->get_logger(), "Failed to call bandebot/stop_serving");
+                    }
+                } catch (const std::exception &e) {
+                    RCLCPP_ERROR(this->get_logger(), "Exception calling bandebot/stop_serving: %s", e.what());
+                }
+            });
     }
     
     void setState(CateringState new_state) {
@@ -164,8 +230,6 @@ private:
     
     void state_machine_callback() {
         auto current_time = std::chrono::steady_clock::now();
-        auto elapsed_since_start = std::chrono::duration_cast<std::chrono::seconds>(
-            current_time - catering_start_time_).count();
         auto elapsed_in_state = std::chrono::duration_cast<std::chrono::seconds>(
             current_time - state_start_time_).count();
         
@@ -194,21 +258,36 @@ private:
                 // Simulate calling attention (placeholder logic)
                 if (elapsed_in_state >= 2) { // 2 seconds to call attention
                     setState(CateringState::ServingFood);
+                    serving_food_start_time_ = std::chrono::steady_clock::now();
+                    call_start_serving(); // Call bandebot/start_serving when entering ServingFood
                     RCLCPP_INFO(this->get_logger(), "Attention called, now serving food");
                 }
                 break;
                 
             case CateringState::ServingFood:
-                // Check if catering time has elapsed
-                if (elapsed_since_start >= catering_time_) {
+                // Check if on-spot catering time has elapsed
+                auto elapsed_serving = std::chrono::duration_cast<std::chrono::seconds>(
+                    current_time - serving_food_start_time_).count();
+                    
+                if (elapsed_serving >= on_spot_catering_time_) {
+                    call_stop_serving(); // Call bandebot/stop_serving before transitioning
+                    setState(CateringState::FindingEmptySpot);
+                    RCLCPP_INFO(this->get_logger(), "On-spot catering time completed, finding new spot");
+                }
+                
+                // Safety check: if app state changes away from Serving during ServingFood
+                if (current_app_state_ != BANDEBOT_APP_STATE::Serving) {
+                    call_stop_serving();
                     setState(CateringState::Standby);
-                    RCLCPP_INFO(this->get_logger(), "Catering time completed, returning to Standby");
+                    RCLCPP_WARN(this->get_logger(), "Emergency stop: App state changed from Serving while serving food");
+                    return; // Exit early to avoid the general safety check below
                 }
                 break;
         }
         
-        // Safety check: if app state changes away from ReadyLoaded during operation
-        if (current_state_ != CateringState::Standby && 
+        // General safety check: if app state changes away from ReadyLoaded during operation
+        // (except when in ServingFood state, which has its own check above)
+        if (current_state_ != CateringState::Standby && current_state_ != CateringState::ServingFood &&
             current_app_state_ != BANDEBOT_APP_STATE::ReadyLoaded) {
             setState(CateringState::Standby);
             RCLCPP_WARN(this->get_logger(), "Emergency stop: App state changed from ReadyLoaded");
