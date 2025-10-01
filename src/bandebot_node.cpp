@@ -278,7 +278,7 @@ private:
                     }
 
                 if( bandebot_twin_.CheckIfAllTraysEmpty() ) {
-                    bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ReadyUnloaded;
+                    bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ApplicationReady;
                 }
                 break;
 
@@ -335,7 +335,7 @@ private:
                     }
                 
                     if( bandebot_twin_.CheckIfAllTraysEmpty() ) {
-                        bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ReadyUnloaded;
+                        bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::Unloading;
                     }                   
 
                 }
