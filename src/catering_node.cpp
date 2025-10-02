@@ -3,7 +3,7 @@
  * Copyright 2025 Roman Di Lullo
  * 
  * Created: 01/10/2025
- * Last Modified: 01/10/2025
+ * Last Modified: 02/10/2025
  * 
  *****************************************************************************/
 
@@ -45,11 +45,11 @@ public:
         
         // Create service servers
         start_catering_service_ = this->create_service<rogue_droids_interfaces::srv::StartCatering>(
-            "start_catering",
+            std::string("bandebot/start_catering"),
             std::bind(&CateringNode::handle_start_catering, this, std::placeholders::_1, std::placeholders::_2));
         
         stop_catering_service_ = this->create_service<rogue_droids_interfaces::srv::StopCatering>(
-            "stop_catering", 
+            std::string("bandebot/stop_catering"), 
             std::bind(&CateringNode::handle_stop_catering, this, std::placeholders::_1, std::placeholders::_2));
         
         // Create service clients for bandebot serving

@@ -23,7 +23,15 @@ def generate_launch_description():
         output='screen'
     )
 
+    catering_node = Node(
+        package='bandebot_app',
+        executable='catering_node',
+        name='catering_node',
+        output='screen'
+    )
+
     return LaunchDescription([
         mulita_launch,
-        bandebot_node
+        bandebot_node,
+        catering_node
     ])
