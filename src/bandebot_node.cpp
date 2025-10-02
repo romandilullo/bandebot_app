@@ -40,6 +40,7 @@ public:
         requested_tray_position_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("bandebot/requested_tray_position", 10);
         tray_illumination_requested_state_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("bandebot/tray_illumination_requested_state", 10);
         robot_hardware_status_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::RobotHardwareStatus>("bandebot/robot_hardware_status", 10);
+        power_relays_control_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("mulita/power_relays_control", 10);
 
         // Create subscribers
 
@@ -136,6 +137,7 @@ private:
     rclcpp::Publisher<rogue_droids_interfaces::msg::CanFrame>::SharedPtr requested_tray_position_publisher_;
     rclcpp::Publisher<rogue_droids_interfaces::msg::CanFrame>::SharedPtr tray_illumination_requested_state_publisher_;
     rclcpp::Publisher<rogue_droids_interfaces::msg::RobotHardwareStatus>::SharedPtr robot_hardware_status_publisher_;
+    rclcpp::Publisher<rogue_droids_interfaces::msg::CanFrame>::SharedPtr power_relays_control_publisher_;
 
     rclcpp::Subscription<rogue_droids_interfaces::msg::CanFrame>::SharedPtr mulita_robot_state_subscriber_;
     rclcpp::Subscription<rogue_droids_interfaces::msg::CanFrame>::SharedPtr tray_content_state_subscriber_;
@@ -174,7 +176,8 @@ private:
 
             case BANDEBOT_APP_STATE::WaitingMobileBaseReady:
 
-                // Ready to start the robot - Start Identifying hardware
+                messagePowerRelayControl(true, true);
+
                 bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::IdentifyingHardware;
                 operation_start_time_ = rclcpp::Clock().now();                
 
@@ -475,6 +478,17 @@ private:
         response->success = bandebot_twin_.StopServing(request->mode);
     }
     
+
+    void messagePowerRelayControl(bool app_relay_state, bool aux_relay_state)
+    {
+        auto ros_msg = rogue_droids_interfaces::msg::CanFrame();
+
+        ros_msg.len = 2;
+        ros_msg.data[0] = static_cast<uint8_t>(app_relay_state);
+        ros_msg.data[1] = static_cast<uint8_t>(aux_relay_state);
+
+        power_relays_control_publisher_->publish(ros_msg);
+    }
 
     void messageBandebotAppState()
     {
