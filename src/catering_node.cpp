@@ -23,12 +23,19 @@
 
 using namespace std::chrono_literals;
 
+#define MIN_CATERING_TIME 5.0
+#define MAX_CATERING_TIME 60.0
+#define MIN_CATERING_RADIUS 0.5
+#define MAX_CATERING_RADIUS 5.0
+
+#define MAX_TIME_REACHING_POSE 15.0
+
+
 enum class CateringState : uint8_t {
     Standby = 0,
     FindingEmptySpot = 1,
     MovingToEmptySpot = 2,
-    CallingAttention = 3,
-    ServingFood = 4
+    ServingFood = 3
 };
 
 class CateringNode : public rclcpp::Node {
@@ -119,9 +126,10 @@ private:
         }
         
         // Validate parameters
-        if (request->catering_radius <= 0.0 || request->on_spot_catering_time <= 0.0) {
+        if (request->catering_radius < MIN_CATERING_RADIUS || request->catering_radius > MAX_CATERING_RADIUS ||
+            request->on_spot_catering_time < MIN_CATERING_TIME || request->on_spot_catering_time > MAX_CATERING_TIME) {
             response->success = false;
-            response->message = "Invalid catering parameters (must be > 0)";
+            response->message = "Invalid catering parameters (radius between 0.5-5.0m, time between 5-60s)";
             RCLCPP_WARN(this->get_logger(), "Start catering rejected: Invalid parameters");
             return;
         }
@@ -309,7 +317,6 @@ private:
             case CateringState::Standby: return "Standby";
             case CateringState::FindingEmptySpot: return "FindingEmptySpot";
             case CateringState::MovingToEmptySpot: return "MovingToEmptySpot";
-            case CateringState::CallingAttention: return "CallingAttention";
             case CateringState::ServingFood: return "ServingFood";
             default: return "Unknown";
         }
@@ -343,32 +350,11 @@ private:
                     } else {
                         RCLCPP_WARN(this->get_logger(), "Navigation action failed");
                     }
-                    // Either way, proceed to calling attention with 360° turn
-                    setState(CateringState::CallingAttention);
-                    call_navigation_action(0.0, 0.0, 2.0 * M_PI); // 360° turn
-                    RCLCPP_INFO(this->get_logger(), "Starting attention-calling 360° turn");
-                } else if (elapsed_in_state >= 15) { // 15 second timeout
-                    RCLCPP_WARN(this->get_logger(), "Navigation timeout reached, canceling action");
-                    cancel_navigation_action();
-                    setState(CateringState::CallingAttention);
-                    call_navigation_action(0.0, 0.0, 2.0 * M_PI); // 360° turn
-                    RCLCPP_INFO(this->get_logger(), "Starting attention-calling 360° turn after timeout");
-                }
-                break;
-                
-            case CateringState::CallingAttention:
-                // Monitor the 360° turn action
-                if (action_completed_) {
-                    if (action_succeeded_) {
-                        RCLCPP_INFO(this->get_logger(), "360° attention turn completed successfully");
-                    } else {
-                        RCLCPP_WARN(this->get_logger(), "360° attention turn failed");
-                    }
                     // Either way, proceed to serving food
                     setState(CateringState::ServingFood);
                     call_start_serving(); // Call bandebot/start_serving when entering ServingFood
                     RCLCPP_INFO(this->get_logger(), "Attention called, now serving food");
-                } else if (elapsed_in_state >= 15) { // 15 second timeout
+                } else if (elapsed_in_state >= MAX_TIME_REACHING_POSE) {
                     RCLCPP_WARN(this->get_logger(), "Attention turn timeout reached, canceling action");
                     cancel_navigation_action();
                     setState(CateringState::ServingFood);
@@ -387,21 +373,13 @@ private:
                 }
                 
                 // Safety check: if app state changes away from Serving during ServingFood
-                // if (current_app_state_ != BANDEBOT_APP_STATE::Serving) {
-                //     call_stop_serving();
-                //     setState(CateringState::Standby);
-                //     RCLCPP_WARN(this->get_logger(), "Emergency stop: App state changed from Serving while serving food");
-                //     return; // Exit early to avoid the general safety check below
-                // }
+                if ((elapsed_in_state >= MIN_CATERING_TIME) && (current_app_state_ != BANDEBOT_APP_STATE::Serving)) {
+                    call_stop_serving();
+                    setState(CateringState::Standby);
+                    RCLCPP_WARN(this->get_logger(), "Stop: App state changed from Serving while serving food");
+                    return; // Exit early to avoid the general safety check below
+                }
                 break;
-        }
-        
-        // General safety check: if app state changes away from ReadyLoaded during operation
-        // (except when in ServingFood state, which has its own check above)
-        if (current_state_ != CateringState::Standby && current_state_ != CateringState::ServingFood &&
-            current_app_state_ != BANDEBOT_APP_STATE::ReadyLoaded) {
-            setState(CateringState::Standby);
-            RCLCPP_WARN(this->get_logger(), "Emergency stop: App state changed from ReadyLoaded");
         }
     }
 };
