@@ -3,7 +3,7 @@
  * Copyright 2025 Roman Di Lullo
  * 
  * Created: 01/10/2025
- * Last Modified: 02/10/2025
+ * Last Modified: 06/10/2025
  * 
  *****************************************************************************/
 
@@ -75,7 +75,6 @@ private:
     // Catering parameters
     float catering_radius_;
     float on_spot_catering_time_;
-    std::chrono::steady_clock::time_point serving_food_start_time_;
     std::chrono::steady_clock::time_point state_start_time_;
     
     // ROS2 components
@@ -367,37 +366,33 @@ private:
                     }
                     // Either way, proceed to serving food
                     setState(CateringState::ServingFood);
-                    serving_food_start_time_ = std::chrono::steady_clock::now();
                     call_start_serving(); // Call bandebot/start_serving when entering ServingFood
                     RCLCPP_INFO(this->get_logger(), "Attention called, now serving food");
                 } else if (elapsed_in_state >= 15) { // 15 second timeout
                     RCLCPP_WARN(this->get_logger(), "Attention turn timeout reached, canceling action");
                     cancel_navigation_action();
                     setState(CateringState::ServingFood);
-                    serving_food_start_time_ = std::chrono::steady_clock::now();
                     call_start_serving(); // Call bandebot/start_serving when entering ServingFood
                     RCLCPP_INFO(this->get_logger(), "Proceeding to serving food after timeout");
                 }
                 break;
                 
             case CateringState::ServingFood:
+
                 // Check if on-spot catering time has elapsed
-                auto elapsed_serving = std::chrono::duration_cast<std::chrono::seconds>(
-                    current_time - serving_food_start_time_).count();
-                    
-                if (elapsed_serving >= on_spot_catering_time_) {
+                if (elapsed_in_state >= on_spot_catering_time_) {
                     call_stop_serving(); // Call bandebot/stop_serving before transitioning
                     setState(CateringState::FindingEmptySpot);
                     RCLCPP_INFO(this->get_logger(), "On-spot catering time completed, finding new spot");
                 }
                 
                 // Safety check: if app state changes away from Serving during ServingFood
-                if (current_app_state_ != BANDEBOT_APP_STATE::Serving) {
-                    call_stop_serving();
-                    setState(CateringState::Standby);
-                    RCLCPP_WARN(this->get_logger(), "Emergency stop: App state changed from Serving while serving food");
-                    return; // Exit early to avoid the general safety check below
-                }
+                // if (current_app_state_ != BANDEBOT_APP_STATE::Serving) {
+                //     call_stop_serving();
+                //     setState(CateringState::Standby);
+                //     RCLCPP_WARN(this->get_logger(), "Emergency stop: App state changed from Serving while serving food");
+                //     return; // Exit early to avoid the general safety check below
+                // }
                 break;
         }
         
