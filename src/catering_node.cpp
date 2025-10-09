@@ -24,26 +24,20 @@
 
 using namespace std::chrono_literals;
 
-#define MIN_CATERING_TIME 5.0
-#define MAX_CATERING_TIME 60.0
+#define MIN_CATERING_TIME 10.0
+#define MAX_CATERING_TIME 120.0
 #define MIN_CATERING_RADIUS 0.5
 #define MAX_CATERING_RADIUS 5.0
 
-#define MAX_TIME_REACHING_POSE 15.0
-
-
-enum class CateringState : uint8_t {
-    Standby = 0,
-    FindingEmptySpot = 1,
-    MovingToEmptySpot = 2,
-    ServingFood = 3
-};
+#define MAX_TIME_REACHING_POSE 30.0
+#define MAX_TIME_WAITING_SERVING_START_STOP 5.0
+#define MAX_TIME_WAITING_NAV_CANCEL 5.0
 
 class CateringNode : public rclcpp::Node {
 public:
     CateringNode() : Node("catering_node") {
         // Initialize state variables
-        current_state_ = CateringState::Standby;
+        current_state_ = BANDEBOT_CATERING_STATE::Standby;
         current_app_state_ = BANDEBOT_APP_STATE::Unknown;
         
         // Create subscriber to bandebot app state
@@ -77,14 +71,14 @@ public:
             100ms, std::bind(&CateringNode::state_machine_callback, this));
         
         // Publish initial catering state
-        publishCateringState();
+        setState(BANDEBOT_CATERING_STATE::Standby);
         
         RCLCPP_INFO(this->get_logger(), "Catering node initialized - State: Standby");
     }
 
 private:
     // State variables
-    CateringState current_state_;
+    BANDEBOT_CATERING_STATE current_state_;
     BANDEBOT_APP_STATE current_app_state_;
     
     // Catering parameters
@@ -120,7 +114,7 @@ private:
         std::shared_ptr<rogue_droids_interfaces::srv::StartCatering::Response> response) {
         
         // Check preconditions
-        if (current_state_ != CateringState::Standby) {
+        if (current_state_ != BANDEBOT_CATERING_STATE::Standby) {
             response->success = false;
             response->message = "Catering node is not in Standby state";
             RCLCPP_WARN(this->get_logger(), "Start catering rejected: Not in Standby state");
@@ -148,7 +142,7 @@ private:
         on_spot_catering_time_ = request->on_spot_catering_time;
         
         // Transition to FindingEmptySpot state
-        setState(CateringState::FindingEmptySpot);
+        setState(BANDEBOT_CATERING_STATE::FindingEmptySpot);
         
         response->success = true;
         response->message = "Catering started successfully";
@@ -162,7 +156,7 @@ private:
         
         (void)request; // Suppress unused parameter warning
         
-        if (current_state_ == CateringState::Standby) {
+        if (current_state_ == BANDEBOT_CATERING_STATE::Standby) {
             response->success = false;
             response->message = "Catering is not active";
             RCLCPP_WARN(this->get_logger(), "Stop catering rejected: Already in Standby");
@@ -170,7 +164,7 @@ private:
         }
         
         // Can only stop catering if in ServingFood state
-        if (current_state_ != CateringState::ServingFood) {
+        if (current_state_ != BANDEBOT_CATERING_STATE::ServingFood) {
             response->success = false;
             response->message = "Can only stop catering when in ServingFood state";
             RCLCPP_WARN(this->get_logger(), "Stop catering rejected: Not in ServingFood state");
@@ -181,7 +175,7 @@ private:
         call_stop_serving();
         
         // Return to Standby state
-        setState(CateringState::Standby);
+        setState(BANDEBOT_CATERING_STATE::Standby);
         
         response->success = true;
         response->message = "Catering stopped successfully";
@@ -199,17 +193,17 @@ private:
         
         start_serving_client_->async_send_request(request,
             [this](rclcpp::Client<rogue_droids_interfaces::srv::StartServing>::SharedFuture result) {
-                try {
-                    auto response = result.get();
-                    if (response->success) {
-                        RCLCPP_INFO(this->get_logger(), "Successfully called bandebot/start_serving");
-                    } else {
+            try {
+                auto response = result.get();
+                if (response->success) {
+                    RCLCPP_INFO(this->get_logger(), "Successfully called bandebot/start_serving");
+                } else {
                         RCLCPP_WARN(this->get_logger(), "Failed to call bandebot/start_serving");
-                    }
-                } catch (const std::exception &e) {
-                    RCLCPP_ERROR(this->get_logger(), "Exception calling bandebot/start_serving: %s", e.what());
                 }
-            });
+            } catch (const std::exception &e) {
+                RCLCPP_ERROR(this->get_logger(), "Exception calling bandebot/start_serving: %s", e.what());
+            }
+        });
     }
     
     void call_stop_serving() {
@@ -225,14 +219,14 @@ private:
             [this](rclcpp::Client<rogue_droids_interfaces::srv::StopServing>::SharedFuture result) {
                 try {
                     auto response = result.get();
-                    if (response->success) {
-                        RCLCPP_INFO(this->get_logger(), "Successfully called bandebot/stop_serving");
-                    } else {
+                if (response->success) {
+                    RCLCPP_INFO(this->get_logger(), "Successfully called bandebot/stop_serving");
+            } else {
                         RCLCPP_WARN(this->get_logger(), "Failed to call bandebot/stop_serving");
-                    }
-                } catch (const std::exception &e) {
-                    RCLCPP_ERROR(this->get_logger(), "Exception calling bandebot/stop_serving: %s", e.what());
-                }
+            }
+        } catch (const std::exception &e) {
+            RCLCPP_ERROR(this->get_logger(), "Exception calling bandebot/stop_serving: %s", e.what());
+        }
             });
     }
     
@@ -311,7 +305,7 @@ private:
         }
     }
     
-    void setState(CateringState new_state) {
+    void setState(BANDEBOT_CATERING_STATE new_state) {
         if (current_state_ != new_state) {
             RCLCPP_INFO(this->get_logger(), "State transition: %s -> %s", 
                        getStateName(current_state_).c_str(), 
@@ -333,12 +327,15 @@ private:
                     static_cast<uint8_t>(current_state_), getStateName(current_state_).c_str());
     }
     
-    std::string getStateName(CateringState state) {
+    std::string getStateName(BANDEBOT_CATERING_STATE state) {
         switch(state) {
-            case CateringState::Standby: return "Standby";
-            case CateringState::FindingEmptySpot: return "FindingEmptySpot";
-            case CateringState::MovingToEmptySpot: return "MovingToEmptySpot";
-            case CateringState::ServingFood: return "ServingFood";
+            case BANDEBOT_CATERING_STATE::Standby: return "Standby";
+            case BANDEBOT_CATERING_STATE::FindingEmptySpot: return "FindingEmptySpot";
+            case BANDEBOT_CATERING_STATE::MovingToEmptySpot: return "MovingToEmptySpot";
+            case BANDEBOT_CATERING_STATE::WaitingNavigationCancel: return "WaitingNavigationCancel";
+            case BANDEBOT_CATERING_STATE::WaitingServingStarted: return "WaitingServingStarted";
+            case BANDEBOT_CATERING_STATE::ServingFood: return "ServingFood";
+            case BANDEBOT_CATERING_STATE::WaitingServingStopped: return "WaitingServingStopped";
             default: return "Unknown";
         }
     }
@@ -349,57 +346,100 @@ private:
             current_time - state_start_time_).count();
         
         switch (current_state_) {
-            case CateringState::Standby:
+            case BANDEBOT_CATERING_STATE::Standby:
                 // No action needed in standby
                 break;
                 
-            case CateringState::FindingEmptySpot:
+            case BANDEBOT_CATERING_STATE::FindingEmptySpot:
                 // Simulate finding an empty spot (placeholder logic)
                 if (elapsed_in_state >= 3) { // 3 seconds to find a spot
-                    setState(CateringState::MovingToEmptySpot);
+                    setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
                     // Call navigation action: x=1, y=0, theta=pi (temporary test code)
                     call_navigation_action(1.0, 0.0, M_PI);
                     RCLCPP_INFO(this->get_logger(), "Empty spot found, moving to position");
                 }
                 break;
                 
-            case CateringState::MovingToEmptySpot:
+            case BANDEBOT_CATERING_STATE::MovingToEmptySpot:
+
                 // Monitor navigation action and timeout
                 if (action_completed_) {
+
                     if (action_succeeded_) {
                         RCLCPP_INFO(this->get_logger(), "Successfully arrived at target position");
                     } else {
                         RCLCPP_WARN(this->get_logger(), "Navigation action failed");
                     }
+
                     // Either way, proceed to serving food
-                    setState(CateringState::ServingFood);
-                    call_start_serving(); // Call bandebot/start_serving when entering ServingFood
+                    setState(BANDEBOT_CATERING_STATE::WaitingServingStarted);
+                    call_start_serving();
                     RCLCPP_INFO(this->get_logger(), "Attention called, now serving food");
+
                 } else if (elapsed_in_state >= MAX_TIME_REACHING_POSE) {
+
                     RCLCPP_WARN(this->get_logger(), "Attention turn timeout reached, canceling action");
                     cancel_navigation_action();
-                    setState(CateringState::ServingFood);
-                    call_start_serving(); // Call bandebot/start_serving when entering ServingFood
-                    RCLCPP_INFO(this->get_logger(), "Proceeding to serving food after timeout");
+                    setState(BANDEBOT_CATERING_STATE::WaitingNavigationCancel);
                 }
                 break;
-                
-            case CateringState::ServingFood:
+
+            case BANDEBOT_CATERING_STATE::WaitingNavigationCancel:
+
+                // Waiting for navigation cancel to complete
+                if (action_completed_) {
+
+                    call_start_serving();
+                    setState(BANDEBOT_CATERING_STATE::WaitingServingStarted);
+                    RCLCPP_INFO(this->get_logger(), "Now serving food after canceling navigation");
+
+                } else if (elapsed_in_state >= MAX_TIME_WAITING_NAV_CANCEL) {
+                    RCLCPP_WARN(this->get_logger(), "Navigation cancel timeout reached, forcing state change");
+                    cancel_navigation_action();
+                    setState(BANDEBOT_CATERING_STATE::Standby);
+                }
+                break;
+
+            case BANDEBOT_CATERING_STATE::WaitingServingStarted:
+
+                if( current_app_state_ == BANDEBOT_APP_STATE::Serving) {
+
+                    setState(BANDEBOT_CATERING_STATE::ServingFood);
+
+                } else if (elapsed_in_state >= MAX_TIME_WAITING_SERVING_START_STOP) {
+                    RCLCPP_ERROR(this->get_logger(), "Timeout waiting for serving to start");
+                    setState(BANDEBOT_CATERING_STATE::Standby);
+                }   
+                break;
+
+            case BANDEBOT_CATERING_STATE::ServingFood:
 
                 // Check if on-spot catering time has elapsed
                 if (elapsed_in_state >= on_spot_catering_time_) {
                     call_stop_serving(); // Call bandebot/stop_serving before transitioning
-                    setState(CateringState::FindingEmptySpot);
-                    RCLCPP_INFO(this->get_logger(), "On-spot catering time completed, finding new spot");
+                    setState(BANDEBOT_CATERING_STATE::FindingEmptySpot);
+                        RCLCPP_INFO(this->get_logger(), "On-spot catering time completed, finding new spot");
                 }
                 
                 // Safety check: if app state changes away from Serving during ServingFood
                 if ((elapsed_in_state >= MIN_CATERING_TIME) && (current_app_state_ != BANDEBOT_APP_STATE::Serving)) {
                     call_stop_serving();
-                    setState(CateringState::Standby);
+                    setState(BANDEBOT_CATERING_STATE::Standby);
                     RCLCPP_WARN(this->get_logger(), "Stop: App state changed from Serving while serving food");
                     return; // Exit early to avoid the general safety check below
                 }
+                break;
+
+            case BANDEBOT_CATERING_STATE::WaitingServingStopped:
+
+                if( current_app_state_ == BANDEBOT_APP_STATE::ReadyLoaded) {
+
+                    setState(BANDEBOT_CATERING_STATE::FindingEmptySpot);
+
+                } else if (elapsed_in_state >= MAX_TIME_WAITING_SERVING_START_STOP) {
+                    RCLCPP_ERROR(this->get_logger(), "Timeout waiting for serving to stop");
+                    setState(BANDEBOT_CATERING_STATE::Standby);
+                }   
                 break;
         }
     }
