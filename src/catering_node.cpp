@@ -18,6 +18,7 @@
 #include <rogue_droids_interfaces/srv/start_serving.hpp>
 #include <rogue_droids_interfaces/srv/stop_serving.hpp>
 #include <rogue_droids_interfaces/action/go_to_relative_pose.hpp>
+#include <std_msgs/msg/u_int8.hpp>
 #include "../../mulita/include/mulita_defines.h"
 #include "../../mulita/include/bandebot_defines.h"
 
@@ -50,6 +51,10 @@ public:
             "bandebot/app_state", 10, 
             std::bind(&CateringNode::app_state_callback, this, std::placeholders::_1));
         
+        // Create publisher for catering mode state
+        catering_mode_state_publisher_ = this->create_publisher<std_msgs::msg::UInt8>(
+            "bandebot/catering_mode_state", 10);
+        
         // Create service servers
         start_catering_service_ = this->create_service<rogue_droids_interfaces::srv::StartCatering>(
             std::string("bandebot/start_catering"),
@@ -71,6 +76,9 @@ public:
         state_timer_ = this->create_wall_timer(
             100ms, std::bind(&CateringNode::state_machine_callback, this));
         
+        // Publish initial catering state
+        publishCateringState();
+        
         RCLCPP_INFO(this->get_logger(), "Catering node initialized - State: Standby");
     }
 
@@ -86,6 +94,7 @@ private:
     
     // ROS2 components
     rclcpp::Subscription<rogue_droids_interfaces::msg::CanFrame>::SharedPtr app_state_subscriber_;
+    rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr catering_mode_state_publisher_;
     rclcpp::Service<rogue_droids_interfaces::srv::StartCatering>::SharedPtr start_catering_service_;
     rclcpp::Service<rogue_droids_interfaces::srv::StopCatering>::SharedPtr stop_catering_service_;
     rclcpp::Client<rogue_droids_interfaces::srv::StartServing>::SharedPtr start_serving_client_;
@@ -309,7 +318,19 @@ private:
                        getStateName(new_state).c_str());
             current_state_ = new_state;
             state_start_time_ = std::chrono::steady_clock::now();
+            
+            // Publish the new catering state
+            publishCateringState();
         }
+    }
+    
+    void publishCateringState() {
+        auto ros_msg = std_msgs::msg::UInt8();
+        ros_msg.data = static_cast<uint8_t>(current_state_);
+        catering_mode_state_publisher_->publish(ros_msg);
+        
+        RCLCPP_DEBUG(this->get_logger(), "Published catering state: %u (%s)", 
+                    static_cast<uint8_t>(current_state_), getStateName(current_state_).c_str());
     }
     
     std::string getStateName(CateringState state) {
