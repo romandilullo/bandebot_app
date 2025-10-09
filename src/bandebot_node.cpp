@@ -4,7 +4,7 @@
  * 
  * 
  * Created: 23/04/2025
- * Last Modified: 11/09/2025
+ * Last Modified: 09/10/2025
  * 
  *****************************************************************************/
 
@@ -12,6 +12,7 @@
 #include "rogue_droids_interfaces/msg/can_frame.hpp"
 #include "rogue_droids_interfaces/msg/robot_hardware_status.hpp"
 #include "rogue_droids_interfaces/srv/calibrate.hpp"
+#include "rogue_droids_interfaces/srv/set_sidelights.hpp"
 #include "rogue_droids_interfaces/srv/start_loading.hpp"
 #include "rogue_droids_interfaces/srv/stop_loading.hpp"
 #include "rogue_droids_interfaces/srv/start_unloading.hpp"
@@ -98,6 +99,9 @@ public:
             std::string("bandebot/stop_serving"),
             std::bind(&BandebotNode::handle_srv_stop_serving_, this, std::placeholders::_1, std::placeholders::_2));
         
+        // Create service client for sidelights control
+        sidelights_client_ = this->create_client<rogue_droids_interfaces::srv::SetSidelights>("mulita/set_sidelights");
+        
         operation_start_time_ = rclcpp::Clock().now();
 
         messageBandebotAppState();
@@ -132,6 +136,9 @@ private:
     rclcpp::Service<rogue_droids_interfaces::srv::StopUnloading>::SharedPtr srv_stop_unloading_;
     rclcpp::Service<rogue_droids_interfaces::srv::StartServing>::SharedPtr srv_start_serving_;
     rclcpp::Service<rogue_droids_interfaces::srv::StopServing>::SharedPtr srv_stop_serving_;
+    
+    // Service client for sidelights control
+    rclcpp::Client<rogue_droids_interfaces::srv::SetSidelights>::SharedPtr sidelights_client_;
 
     rclcpp::Publisher<rogue_droids_interfaces::msg::CanFrame>::SharedPtr bandebot_app_state_publisher_;
     rclcpp::Publisher<rogue_droids_interfaces::msg::CanFrame>::SharedPtr requested_tray_position_publisher_;
@@ -501,6 +508,13 @@ private:
 
         if(bandebot_twin_.currentBandebotState != last_bandebot_app_state_)
         {
+            // Handle sidelights based on state transitions
+            if (bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Serving) {
+                setSidelights(SIDELIGHTS_MODE::On, SIDELIGHTS_COLOR::Green, 500);
+            } else if (last_bandebot_app_state_ == BANDEBOT_APP_STATE::Serving) {
+                setSidelights(SIDELIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 500);
+            }
+            
             last_bandebot_app_state_ = bandebot_twin_.currentBandebotState;
             RCLCPP_INFO(this->get_logger(), "BANDEBOT APP STATE changed to: %u", static_cast<unsigned int>(bandebot_twin_.currentBandebotState));
         }
@@ -628,6 +642,36 @@ private:
                 requested_tray_position_publisher_->publish(ros_msg);
             }            
         }
+    }
+
+    void setSidelights(SIDELIGHTS_MODE mode, SIDELIGHTS_COLOR color, uint16_t period = 500)
+    {
+        if (!sidelights_client_->wait_for_service(std::chrono::seconds(1))) {
+            RCLCPP_WARN(this->get_logger(), "mulita/set_sidelights service not available");
+            return;
+        }
+        
+        auto request = std::make_shared<rogue_droids_interfaces::srv::SetSidelights::Request>();
+        request->mode = (uint8_t)mode;
+        request->color = (uint8_t)color;
+        request->period = period;
+        
+        // Send async request with callback - non-blocking
+        sidelights_client_->async_send_request(request,
+            [this](rclcpp::Client<rogue_droids_interfaces::srv::SetSidelights>::SharedFuture future) {
+                try {
+                    auto response = future.get();
+                    if (response->success) {
+                        RCLCPP_DEBUG(this->get_logger(), "Sidelights updated successfully");
+                    } else {
+                        RCLCPP_WARN(this->get_logger(), "Failed to set sidelights: %s", response->message.c_str());
+                    }
+                } catch (const std::exception &e) {
+                    RCLCPP_ERROR(this->get_logger(), "Exception in sidelights service response: %s", e.what());
+                }
+            });
+        
+        RCLCPP_DEBUG(this->get_logger(), "Sidelights service call sent asynchronously");
     }
 
 };
