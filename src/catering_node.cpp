@@ -3,7 +3,7 @@
  * Copyright 2025 Roman Di Lullo
  * 
  * Created: 01/10/2025
- * Last Modified: 06/10/2025
+ * Last Modified: 11/10/2025
  * 
  *****************************************************************************/
 
@@ -13,6 +13,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <rogue_droids_interfaces/msg/can_frame.hpp>
+#include <rogue_droids_interfaces/srv/find_free_spot.hpp>
 #include <rogue_droids_interfaces/srv/start_catering.hpp>
 #include <rogue_droids_interfaces/srv/stop_catering.hpp>
 #include <rogue_droids_interfaces/srv/start_serving.hpp>
@@ -32,6 +33,7 @@ using namespace std::chrono_literals;
 #define MAX_TIME_REACHING_POSE 30.0
 #define MAX_TIME_WAITING_SERVING_START_STOP 5.0
 #define MAX_TIME_WAITING_NAV_CANCEL 5.0
+#define MAX_TIME_WAITING_SPOT_SEARCH 5.0
 
 class CateringNode : public rclcpp::Node {
 public:
@@ -61,6 +63,9 @@ public:
         // Create service clients for bandebot serving
         start_serving_client_ = this->create_client<rogue_droids_interfaces::srv::StartServing>("bandebot/start_serving");
         stop_serving_client_ = this->create_client<rogue_droids_interfaces::srv::StopServing>("bandebot/stop_serving");
+        
+        // Create service client for finding free spots
+        find_free_spot_client_ = this->create_client<rogue_droids_interfaces::srv::FindFreeSpot>("mulita/find_free_spot");
         
         // Create action client for navigation
         navigation_action_client_ = rclcpp_action::create_client<rogue_droids_interfaces::action::GoToRelativePose>(
@@ -93,6 +98,7 @@ private:
     rclcpp::Service<rogue_droids_interfaces::srv::StopCatering>::SharedPtr stop_catering_service_;
     rclcpp::Client<rogue_droids_interfaces::srv::StartServing>::SharedPtr start_serving_client_;
     rclcpp::Client<rogue_droids_interfaces::srv::StopServing>::SharedPtr stop_serving_client_;
+    rclcpp::Client<rogue_droids_interfaces::srv::FindFreeSpot>::SharedPtr find_free_spot_client_;
     rclcpp_action::Client<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr navigation_action_client_;
     rclcpp::TimerBase::SharedPtr state_timer_;
     
@@ -140,10 +146,9 @@ private:
         // Store catering parameters
         catering_radius_ = request->catering_radius;
         on_spot_catering_time_ = request->on_spot_catering_time;
-        
-        // Transition to FindingEmptySpot state
-        setState(BANDEBOT_CATERING_STATE::FindingEmptySpot);
-        
+
+        call_find_free_spot();
+
         response->success = true;
         response->message = "Catering started successfully";
         RCLCPP_INFO(this->get_logger(), "Catering started - Radius: %.2fm, On-spot time: %.2fs", 
@@ -227,6 +232,44 @@ private:
         } catch (const std::exception &e) {
             RCLCPP_ERROR(this->get_logger(), "Exception calling bandebot/stop_serving: %s", e.what());
         }
+            });
+    }
+    
+    void call_find_free_spot() {
+        if (!find_free_spot_client_->wait_for_service(std::chrono::seconds(1))) {
+            RCLCPP_WARN(this->get_logger(), "mulita/find_free_spot service not available");
+            // Fallback navigation if service not available
+            call_navigation_action(0.0, 0.0, M_PI);
+            setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
+            return;
+        }
+        
+        auto request = std::make_shared<rogue_droids_interfaces::srv::FindFreeSpot::Request>();
+        request->radius = catering_radius_; // Use the catering radius parameter
+        
+        find_free_spot_client_->async_send_request(request,
+            [this](rclcpp::Client<rogue_droids_interfaces::srv::FindFreeSpot>::SharedFuture result) {
+                try {
+                    auto response = result.get();
+                    if (response->success) {
+                        RCLCPP_INFO(this->get_logger(), "Free spot found at x=%.2f, y=%.2f, section=%d", 
+                                   response->relative_x, response->relative_y, response->section_id);
+                        // Call navigation with returned values
+                        call_navigation_action(response->relative_x, response->relative_y, M_PI);
+                        setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
+                    } else {
+                        RCLCPP_WARN(this->get_logger(), "Failed to find free spot: %s. Using fallback navigation.", 
+                                   response->message.c_str());
+                        // Fallback navigation if no free spot found
+                        call_navigation_action(0.0, 0.0, M_PI);
+                        setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
+                    }
+                } catch (const std::exception &e) {
+                    RCLCPP_ERROR(this->get_logger(), "Exception calling find_free_spot: %s", e.what());
+                    // Fallback navigation on exception
+                    call_navigation_action(0.0, 0.0, M_PI);
+                    setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
+                }
             });
     }
     
@@ -339,7 +382,7 @@ private:
             default: return "Unknown";
         }
     }
-    
+
     void state_machine_callback() {
         auto current_time = std::chrono::steady_clock::now();
         auto elapsed_in_state = std::chrono::duration_cast<std::chrono::seconds>(
@@ -351,12 +394,10 @@ private:
                 break;
                 
             case BANDEBOT_CATERING_STATE::FindingEmptySpot:
-                // Simulate finding an empty spot (placeholder logic)
-                if (elapsed_in_state >= 3) { // 3 seconds to find a spot
-                    setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
-                    // Call navigation action: x=1, y=0, theta=pi (temporary test code)
-                    call_navigation_action(1.0, 0.0, M_PI);
-                    RCLCPP_INFO(this->get_logger(), "Empty spot found, moving to position");
+
+                if (elapsed_in_state >= MAX_TIME_WAITING_SPOT_SEARCH) {
+                    setState(BANDEBOT_CATERING_STATE::Standby);
+                    RCLCPP_INFO(this->get_logger(), "Timout searching for empty spot...");
                 }
                 break;
                 
@@ -416,9 +457,9 @@ private:
 
                 // Check if on-spot catering time has elapsed
                 if (elapsed_in_state >= on_spot_catering_time_) {
-                    call_stop_serving(); // Call bandebot/stop_serving before transitioning
-                    setState(BANDEBOT_CATERING_STATE::FindingEmptySpot);
-                        RCLCPP_INFO(this->get_logger(), "On-spot catering time completed, finding new spot");
+                    call_stop_serving();
+                    call_find_free_spot();
+                    RCLCPP_INFO(this->get_logger(), "On-spot catering time completed, finding new spot");
                 }
                 
                 // Safety check: if app state changes away from Serving during ServingFood
@@ -434,7 +475,7 @@ private:
 
                 if( current_app_state_ == BANDEBOT_APP_STATE::ReadyLoaded) {
 
-                    setState(BANDEBOT_CATERING_STATE::FindingEmptySpot);
+                    call_find_free_spot();
 
                 } else if (elapsed_in_state >= MAX_TIME_WAITING_SERVING_START_STOP) {
                     RCLCPP_ERROR(this->get_logger(), "Timeout waiting for serving to stop");
