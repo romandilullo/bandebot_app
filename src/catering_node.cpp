@@ -517,17 +517,16 @@ private:
                 if (action_completed_) {
 
                     if (action_succeeded_) {
-                        RCLCPP_INFO(this->get_logger(), "Successfully arrived at target position");
+                        RCLCPP_INFO(this->get_logger(), "Successfully completed 180 degree turn, trying to find empty spot again");
+                        call_find_free_spot();
                     } else {
-                        RCLCPP_WARN(this->get_logger(), "Navigation action failed");
+                        RCLCPP_WARN(this->get_logger(), "Fallback 180 degree turn failed, returning to standby");
+                        setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                     }
-
-                    call_find_free_spot();
-                    RCLCPP_INFO(this->get_logger(), "Finished Turning 180 degrees, now finding empty spot");
 
                 } else if (elapsed_in_state >= MAX_TIME_REACHING_POSE) {
 
-                    RCLCPP_WARN(this->get_logger(), "Timeout reaching POSE, canceling action");
+                    RCLCPP_WARN(this->get_logger(), "Timeout during 180 degree turn, canceling action");
                     cancel_navigation_action();
                     setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                 }
