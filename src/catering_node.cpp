@@ -3,7 +3,7 @@
  * Copyright 2025 Roman Di Lullo
  * 
  * Created: 01/10/2025
- * Last Modified: 11/10/2025
+ * Last Modified: 13/10/2025
  * 
  *****************************************************************************/
 
@@ -14,12 +14,14 @@
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <rogue_droids_interfaces/msg/can_frame.hpp>
 #include <rogue_droids_interfaces/srv/find_free_spot.hpp>
+#include <rogue_droids_interfaces/srv/get_current_pose.hpp>
 #include <rogue_droids_interfaces/srv/start_catering.hpp>
 #include <rogue_droids_interfaces/srv/stop_catering.hpp>
 #include <rogue_droids_interfaces/srv/start_serving.hpp>
 #include <rogue_droids_interfaces/srv/stop_serving.hpp>
 #include <rogue_droids_interfaces/action/go_to_relative_pose.hpp>
 #include <std_msgs/msg/u_int8.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include "../../mulita/include/mulita_defines.h"
 #include "../../mulita/include/bandebot_defines.h"
 
@@ -67,6 +69,9 @@ public:
         // Create service client for finding free spots
         find_free_spot_client_ = this->create_client<rogue_droids_interfaces::srv::FindFreeSpot>("mulita/find_free_spot");
         
+        // Create service client for getting current pose
+        get_current_pose_client_ = this->create_client<rogue_droids_interfaces::srv::GetCurrentPose>("mulita/get_current_pose");
+        
         // Create action client for navigation
         navigation_action_client_ = rclcpp_action::create_client<rogue_droids_interfaces::action::GoToRelativePose>(
             this, "go_to_relative_pose");
@@ -91,6 +96,10 @@ private:
     float on_spot_catering_time_;
     std::chrono::steady_clock::time_point state_start_time_;
     
+    // Current pose storage
+    geometry_msgs::msg::Pose current_pose_;
+    bool pose_valid_ = false;
+    
     // ROS2 components
     rclcpp::Subscription<rogue_droids_interfaces::msg::CanFrame>::SharedPtr app_state_subscriber_;
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr catering_mode_state_publisher_;
@@ -99,6 +108,7 @@ private:
     rclcpp::Client<rogue_droids_interfaces::srv::StartServing>::SharedPtr start_serving_client_;
     rclcpp::Client<rogue_droids_interfaces::srv::StopServing>::SharedPtr stop_serving_client_;
     rclcpp::Client<rogue_droids_interfaces::srv::FindFreeSpot>::SharedPtr find_free_spot_client_;
+    rclcpp::Client<rogue_droids_interfaces::srv::GetCurrentPose>::SharedPtr get_current_pose_client_;
     rclcpp_action::Client<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr navigation_action_client_;
     rclcpp::TimerBase::SharedPtr state_timer_;
     
@@ -147,7 +157,8 @@ private:
         catering_radius_ = request->catering_radius;
         on_spot_catering_time_ = request->on_spot_catering_time;
 
-        call_find_free_spot();
+        // Get current pose and store locally
+        call_get_current_pose();
 
         response->success = true;
         response->message = "Catering started successfully";
@@ -180,7 +191,7 @@ private:
         call_stop_serving();
         
         // Return to Standby state
-        setState(BANDEBOT_CATERING_STATE::Standby);
+        setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
         
         response->success = true;
         response->message = "Catering stopped successfully";
@@ -235,14 +246,48 @@ private:
             });
     }
     
+    void call_get_current_pose() {
+        if (!get_current_pose_client_->wait_for_service(std::chrono::seconds(1))) {
+            RCLCPP_WARN(this->get_logger(), "mulita/get_current_pose service not available");
+            pose_valid_ = false;
+            return;
+        }
+        
+        setState(BANDEBOT_CATERING_STATE::FindingCurrentPose);
+
+        auto request = std::make_shared<rogue_droids_interfaces::srv::GetCurrentPose::Request>();
+        
+        get_current_pose_client_->async_send_request(request,
+            [this](rclcpp::Client<rogue_droids_interfaces::srv::GetCurrentPose>::SharedFuture result) {
+                try {
+                    auto response = result.get();
+                    if (response->success) {
+                        current_pose_ = response->pose;
+                        pose_valid_ = true;
+                        RCLCPP_INFO(this->get_logger(), "Current pose updated: x=%.2f, y=%.2f, z=%.2f", 
+                                   current_pose_.position.x, current_pose_.position.y, current_pose_.position.z);
+                        RCLCPP_DEBUG(this->get_logger(), "Orientation: x=%.2f, y=%.2f, z=%.2f, w=%.2f",
+                                    current_pose_.orientation.x, current_pose_.orientation.y,
+                                    current_pose_.orientation.z, current_pose_.orientation.w);
+                    } else {
+                        RCLCPP_WARN(this->get_logger(), "Failed to get current pose: %s", response->message.c_str());
+                        pose_valid_ = false;
+                    }
+                } catch (const std::exception &e) {
+                    RCLCPP_ERROR(this->get_logger(), "Exception calling get_current_pose: %s", e.what());
+                    pose_valid_ = false;
+                }
+            });
+    }
+    
     void call_find_free_spot() {
         if (!find_free_spot_client_->wait_for_service(std::chrono::seconds(1))) {
             RCLCPP_WARN(this->get_logger(), "mulita/find_free_spot service not available");
-            // Fallback navigation if service not available
-            call_navigation_action(0.0, 0.0, M_PI);
-            setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
+            setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
             return;
         }
+
+        setState(BANDEBOT_CATERING_STATE::FindingEmptySpot);
         
         auto request = std::make_shared<rogue_droids_interfaces::srv::FindFreeSpot::Request>();
         request->radius = catering_radius_; // Use the catering radius parameter
@@ -267,8 +312,7 @@ private:
                 } catch (const std::exception &e) {
                     RCLCPP_ERROR(this->get_logger(), "Exception calling find_free_spot: %s", e.what());
                     // Fallback navigation on exception
-                    call_navigation_action(0.0, 0.0, M_PI);
-                    setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
+                    setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                 }
             });
     }
@@ -374,11 +418,13 @@ private:
         switch(state) {
             case BANDEBOT_CATERING_STATE::Standby: return "Standby";
             case BANDEBOT_CATERING_STATE::FindingEmptySpot: return "FindingEmptySpot";
+            case BANDEBOT_CATERING_STATE::FindingCurrentPose: return "FindingCurrentPose";
             case BANDEBOT_CATERING_STATE::MovingToEmptySpot: return "MovingToEmptySpot";
             case BANDEBOT_CATERING_STATE::WaitingNavigationCancel: return "WaitingNavigationCancel";
             case BANDEBOT_CATERING_STATE::WaitingServingStarted: return "WaitingServingStarted";
             case BANDEBOT_CATERING_STATE::ServingFood: return "ServingFood";
             case BANDEBOT_CATERING_STATE::WaitingServingStopped: return "WaitingServingStopped";
+            case BANDEBOT_CATERING_STATE::ReturningToStandby: return "ReturningToStandby";
             default: return "Unknown";
         }
     }
@@ -392,11 +438,25 @@ private:
             case BANDEBOT_CATERING_STATE::Standby:
                 // No action needed in standby
                 break;
+
+            case BANDEBOT_CATERING_STATE::FindingCurrentPose:
+
+                if(pose_valid_) {
+                    call_find_free_spot();
+                    RCLCPP_INFO(this->get_logger(), "Current pose valid, proceeding to find empty spot");
+                    break;
+                }   
+
+                if (elapsed_in_state >= MAX_TIME_WAITING_SPOT_SEARCH) { 
+                     setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
+                    RCLCPP_INFO(this->get_logger(), "Timout searching for POSE..");
+                }
+                break;
                 
             case BANDEBOT_CATERING_STATE::FindingEmptySpot:
 
                 if (elapsed_in_state >= MAX_TIME_WAITING_SPOT_SEARCH) {
-                    setState(BANDEBOT_CATERING_STATE::Standby);
+                    setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                     RCLCPP_INFO(this->get_logger(), "Timout searching for empty spot...");
                 }
                 break;
@@ -437,7 +497,7 @@ private:
                 } else if (elapsed_in_state >= MAX_TIME_WAITING_NAV_CANCEL) {
                     RCLCPP_WARN(this->get_logger(), "Navigation cancel timeout reached, forcing state change");
                     cancel_navigation_action();
-                    setState(BANDEBOT_CATERING_STATE::Standby);
+                    setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                 }
                 break;
 
@@ -449,7 +509,7 @@ private:
 
                 } else if (elapsed_in_state >= MAX_TIME_WAITING_SERVING_START_STOP) {
                     RCLCPP_ERROR(this->get_logger(), "Timeout waiting for serving to start");
-                    setState(BANDEBOT_CATERING_STATE::Standby);
+                    setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                 }   
                 break;
 
@@ -465,7 +525,7 @@ private:
                 // Safety check: if app state changes away from Serving during ServingFood
                 if ((elapsed_in_state >= MIN_CATERING_TIME) && (current_app_state_ != BANDEBOT_APP_STATE::Serving)) {
                     call_stop_serving();
-                    setState(BANDEBOT_CATERING_STATE::Standby);
+                    setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                     RCLCPP_WARN(this->get_logger(), "Stop: App state changed from Serving while serving food");
                     return; // Exit early to avoid the general safety check below
                 }
@@ -479,8 +539,18 @@ private:
 
                 } else if (elapsed_in_state >= MAX_TIME_WAITING_SERVING_START_STOP) {
                     RCLCPP_ERROR(this->get_logger(), "Timeout waiting for serving to stop");
-                    setState(BANDEBOT_CATERING_STATE::Standby);
+                    setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                 }   
+                break;
+
+
+            case BANDEBOT_CATERING_STATE::ReturningToStandby:
+
+                // TODO: Implement logic to return to standby position if needed
+                // For now, we just transition to Standby after a brief wait
+                if (elapsed_in_state >= 2) { // Wait 2 seconds before going to
+                    setState(BANDEBOT_CATERING_STATE::Standby);
+                }
                 break;
         }
     }
