@@ -98,8 +98,8 @@ private:
     std::chrono::steady_clock::time_point state_start_time_;
     
     // Current pose storage
-    geometry_msgs::msg::Pose current_pose_;
-    bool pose_valid_ = false;
+    geometry_msgs::msg::Pose initial_pose_;
+    bool initial_pose_valid_ = false;
     
     // ROS2 components
     rclcpp::Subscription<rogue_droids_interfaces::msg::CanFrame>::SharedPtr app_state_subscriber_;
@@ -250,7 +250,7 @@ private:
     void call_get_current_pose() {
         if (!get_current_pose_client_->wait_for_service(std::chrono::seconds(1))) {
             RCLCPP_WARN(this->get_logger(), "mulita/get_current_pose service not available");
-            pose_valid_ = false;
+            initial_pose_valid_ = false;
             return;
         }
         
@@ -263,20 +263,21 @@ private:
                 try {
                     auto response = result.get();
                     if (response->success) {
-                        current_pose_ = response->pose;
-                        pose_valid_ = true;
+                        initial_pose_ = response->pose;
+                        initial_pose_valid_ = true;
                         RCLCPP_INFO(this->get_logger(), "Current pose updated: x=%.2f, y=%.2f, z=%.2f", 
-                                   current_pose_.position.x, current_pose_.position.y, current_pose_.position.z);
+                                   initial_pose_.position.x, initial_pose_.position.y, initial_pose_.position.z);
+
                         RCLCPP_DEBUG(this->get_logger(), "Orientation: x=%.2f, y=%.2f, z=%.2f, w=%.2f",
-                                    current_pose_.orientation.x, current_pose_.orientation.y,
-                                    current_pose_.orientation.z, current_pose_.orientation.w);
+                                    initial_pose_.orientation.x, initial_pose_.orientation.y,
+                                    initial_pose_.orientation.z, initial_pose_.orientation.w);
                     } else {
                         RCLCPP_WARN(this->get_logger(), "Failed to get current pose: %s", response->message.c_str());
-                        pose_valid_ = false;
+                        initial_pose_valid_ = false;
                     }
                 } catch (const std::exception &e) {
                     RCLCPP_ERROR(this->get_logger(), "Exception calling get_current_pose: %s", e.what());
-                    pose_valid_ = false;
+                    initial_pose_valid_ = false;
                 }
             });
     }
@@ -300,6 +301,9 @@ private:
                     if (response->success) {
                         RCLCPP_INFO(this->get_logger(), "Free spot found at x=%.2f, y=%.2f, section=%d", 
                                    response->relative_x, response->relative_y, response->section_id);
+
+                        // TODO: find Theta that points from new x,y to initial_pose_
+
                         // Call navigation with returned values
                         call_navigation_action(response->relative_x, response->relative_y, M_PI);
                         setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
@@ -488,7 +492,7 @@ private:
 
             case BANDEBOT_CATERING_STATE::FindingCurrentPose:
 
-                if(pose_valid_) {
+                if(initial_pose_valid_) {
                     call_find_free_spot();
                     RCLCPP_INFO(this->get_logger(), "Current pose valid, proceeding to find empty spot");
                     break;
