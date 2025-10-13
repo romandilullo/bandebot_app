@@ -120,6 +120,9 @@ private:
     bool action_succeeded_ = false;
     uint64_t goal_id_counter_ = 0;
     
+    // Last known pose from navigation completion
+    geometry_msgs::msg::Pose last_known_pose_;
+    
     void app_state_callback(const rogue_droids_interfaces::msg::CanFrame::SharedPtr msg) {
         if (msg->len >= 1) {
             current_app_state_ = static_cast<BANDEBOT_APP_STATE>(msg->data[0]);
@@ -373,6 +376,13 @@ private:
                     RCLCPP_WARN(this->get_logger(), "Ignoring stale navigation result callback (goal_id: %lu, current: %lu, state: %s)", 
                                current_goal_id, goal_id_counter_, getStateName(current_state_).c_str());
                     return;
+                }
+                
+                // Save the final pose from navigation result
+                if (result.result && result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+                    last_known_pose_ = result.result->final_pose;
+                    RCLCPP_INFO(this->get_logger(), "Navigation completed at position: x=%.2f, y=%.2f (goal_id: %lu)", 
+                               last_known_pose_.position.x, last_known_pose_.position.y, current_goal_id);
                 }
                 
                 action_completed_ = true;
