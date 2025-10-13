@@ -12,6 +12,7 @@
 #include <cmath>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <action_msgs/srv/cancel_goal.hpp>
 #include <rogue_droids_interfaces/msg/can_frame.hpp>
 #include <rogue_droids_interfaces/srv/find_free_spot.hpp>
 #include <rogue_droids_interfaces/srv/get_current_pose.hpp>
@@ -32,10 +33,10 @@ using namespace std::chrono_literals;
 #define MIN_CATERING_RADIUS 0.5
 #define MAX_CATERING_RADIUS 5.0
 
-#define MAX_TIME_REACHING_POSE 60.0
-#define MAX_TIME_WAITING_SERVING_START_STOP 5.0
-#define MAX_TIME_WAITING_NAV_CANCEL 5.0
-#define MAX_TIME_WAITING_SPOT_SEARCH 5.0
+#define MAX_TIME_REACHING_POSE 45.0
+#define MAX_TIME_WAITING_SERVING_START_STOP 3.0
+#define MAX_TIME_WAITING_NAV_CANCEL 3.0
+#define MAX_TIME_WAITING_SPOT_SEARCH 3.0
 
 class CateringNode : public rclcpp::Node {
 public:
@@ -307,7 +308,7 @@ private:
                                    response->message.c_str());
                         // Fallback navigation if no free spot found
                         call_navigation_action(0.0, 0.0, M_PI);
-                        setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
+                        setState(BANDEBOT_CATERING_STATE::Turning180Degrees);
                     }
                 } catch (const std::exception &e) {
                     RCLCPP_ERROR(this->get_logger(), "Exception calling find_free_spot: %s", e.what());
@@ -388,7 +389,52 @@ private:
     void cancel_navigation_action() {
         if (current_goal_handle_) {
             RCLCPP_INFO(this->get_logger(), "Canceling navigation action");
-            navigation_action_client_->async_cancel_goal(current_goal_handle_);
+            
+            // Use async_cancel_goal with a callback to handle the cancellation result
+            navigation_action_client_->async_cancel_goal(current_goal_handle_,
+                [this](std::shared_ptr<action_msgs::srv::CancelGoal_Response> cancel_response) {
+                    if (cancel_response) {
+                        switch (cancel_response->return_code) {
+                            case action_msgs::srv::CancelGoal_Response::ERROR_NONE:
+                                RCLCPP_INFO(this->get_logger(), "Goal cancellation accepted");
+                                action_completed_ = true;
+                                action_succeeded_ = false;
+                                break;
+                            case action_msgs::srv::CancelGoal_Response::ERROR_REJECTED:
+                                RCLCPP_WARN(this->get_logger(), "Goal cancellation rejected");
+                                // Force completion since cancellation was rejected
+                                action_completed_ = true;
+                                action_succeeded_ = false;
+                                current_goal_handle_.reset();
+                                break;
+                            case action_msgs::srv::CancelGoal_Response::ERROR_UNKNOWN_GOAL_ID:
+                                RCLCPP_WARN(this->get_logger(), "Goal cancellation failed: Unknown goal ID");
+                                // Force completion since goal is unknown
+                                action_completed_ = true;
+                                action_succeeded_ = false;
+                                current_goal_handle_.reset();
+                                break;
+                            default:
+                                RCLCPP_ERROR(this->get_logger(), "Unknown cancellation response code: %d", cancel_response->return_code);
+                                // Force completion on unknown response
+                                action_completed_ = true;
+                                action_succeeded_ = false;
+                                current_goal_handle_.reset();
+                                break;
+                        }
+                    } else {
+                        RCLCPP_ERROR(this->get_logger(), "Null cancel response received");
+                        // Force completion on null response
+                        action_completed_ = true;
+                        action_succeeded_ = false;
+                        current_goal_handle_.reset();
+                    }
+                });
+        } else {
+            RCLCPP_WARN(this->get_logger(), "No active goal to cancel");
+            // Ensure action is marked as completed if there's no goal handle
+            action_completed_ = true;
+            action_succeeded_ = false;
         }
     }
     
@@ -425,6 +471,7 @@ private:
             case BANDEBOT_CATERING_STATE::ServingFood: return "ServingFood";
             case BANDEBOT_CATERING_STATE::WaitingServingStopped: return "WaitingServingStopped";
             case BANDEBOT_CATERING_STATE::ReturningToStandby: return "ReturningToStandby";
+            case BANDEBOT_CATERING_STATE::Turning180Degrees: return "Turning180Degrees";
             default: return "Unknown";
         }
     }
@@ -448,7 +495,7 @@ private:
                 }   
 
                 if (elapsed_in_state >= MAX_TIME_WAITING_SPOT_SEARCH) { 
-                     setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
+                    setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                     RCLCPP_INFO(this->get_logger(), "Timout searching for POSE..");
                 }
                 break;
@@ -460,7 +507,28 @@ private:
                     RCLCPP_INFO(this->get_logger(), "Timout searching for empty spot...");
                 }
                 break;
-                
+
+            case BANDEBOT_CATERING_STATE::Turning180Degrees:
+
+                if (action_completed_) {
+
+                    if (action_succeeded_) {
+                        RCLCPP_INFO(this->get_logger(), "Successfully arrived at target position");
+                    } else {
+                        RCLCPP_WARN(this->get_logger(), "Navigation action failed");
+                    }
+
+                    call_find_free_spot();
+                    RCLCPP_INFO(this->get_logger(), "Finished Turning 180 degrees, now finding empty spot");
+
+                } else if (elapsed_in_state >= MAX_TIME_REACHING_POSE) {
+
+                    RCLCPP_WARN(this->get_logger(), "Timeout reaching POSE, canceling action");
+                    cancel_navigation_action();
+                    setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
+                }
+                break;
+
             case BANDEBOT_CATERING_STATE::MovingToEmptySpot:
 
                 // Monitor navigation action and timeout
@@ -475,11 +543,11 @@ private:
                     // Either way, proceed to serving food
                     setState(BANDEBOT_CATERING_STATE::WaitingServingStarted);
                     call_start_serving();
-                    RCLCPP_INFO(this->get_logger(), "Attention called, now serving food");
+                    RCLCPP_INFO(this->get_logger(), "POSE reached, now serving food");
 
                 } else if (elapsed_in_state >= MAX_TIME_REACHING_POSE) {
 
-                    RCLCPP_WARN(this->get_logger(), "Attention turn timeout reached, canceling action");
+                    RCLCPP_WARN(this->get_logger(), "Timeout reaching POSE, canceling action");
                     cancel_navigation_action();
                     setState(BANDEBOT_CATERING_STATE::WaitingNavigationCancel);
                 }
