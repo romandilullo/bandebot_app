@@ -468,6 +468,12 @@ private:
         double dx_to_initial = target_world_x - initial_pose_.position.x;
         double dy_to_initial = target_world_y - initial_pose_.position.y;
         double distance_to_initial = std::sqrt(dx_to_initial * dx_to_initial + dy_to_initial * dy_to_initial);
+
+        RCLCPP_INFO(this->get_logger(), 
+                    "Calculating corrected pose: target(%.2f, %.2f), initial(%.2f, %.2f), distance=%.2f, radius=%.2f", 
+                    target_world_x, target_world_y, 
+                    initial_pose_.position.x, initial_pose_.position.y, 
+                    distance_to_initial, catering_radius_);
         
         // Correct position if it's outside the catering radius
         double corrected_world_x = target_world_x;
