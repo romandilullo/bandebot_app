@@ -10,6 +10,7 @@
 #include <chrono>
 #include <memory>
 #include <cmath>
+#include <thread>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <action_msgs/srv/cancel_goal.hpp>
@@ -117,6 +118,7 @@ private:
     rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr current_goal_handle_;
     bool action_completed_ = false;
     bool action_succeeded_ = false;
+    uint64_t goal_id_counter_ = 0;
     
     void app_state_callback(const rogue_droids_interfaces::msg::CanFrame::SharedPtr msg) {
         if (msg->len >= 1) {
@@ -308,9 +310,11 @@ private:
                         call_navigation_action(response->relative_x, response->relative_y, M_PI);
                         setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
                     } else {
-                        RCLCPP_WARN(this->get_logger(), "Failed to find free spot: %s. Using fallback navigation.", 
+                        RCLCPP_WARN(this->get_logger(), "Failed to find free spot: %s. Using fallback navigation after brief delay.", 
                                    response->message.c_str());
-                        // Fallback navigation if no free spot found
+                        // Brief delay before fallback navigation to let systems settle
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        // Fallback navigation if no free spot found - move back slightly and turn 180
                         call_navigation_action(0.0, 0.0, M_PI);
                         setState(BANDEBOT_CATERING_STATE::Turning180Degrees);
                     }
@@ -337,14 +341,20 @@ private:
         
         auto send_goal_options = rclcpp_action::Client<rogue_droids_interfaces::action::GoToRelativePose>::SendGoalOptions();
         
+        // Increment goal ID for this new goal
+        goal_id_counter_++;
+        uint64_t current_goal_id = goal_id_counter_;
+        
         send_goal_options.goal_response_callback = 
-            [this](const rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr & goal_handle) {
+            [this, current_goal_id](const rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr & goal_handle) {
                 if (!goal_handle) {
-                    RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
+                    RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server (goal_id: %lu, state: %s)", 
+                               current_goal_id, getStateName(current_state_).c_str());
                     action_completed_ = true;
                     action_succeeded_ = false;
                 } else {
-                    RCLCPP_INFO(this->get_logger(), "Goal accepted by server, waiting for result");
+                    RCLCPP_INFO(this->get_logger(), "Goal accepted by server, waiting for result (goal_id: %lu, state: %s)", 
+                               current_goal_id, getStateName(current_state_).c_str());
                     current_goal_handle_ = goal_handle;
                 }
             };
@@ -357,23 +367,34 @@ private:
             };
             
         send_goal_options.result_callback = 
-            [this](const rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::WrappedResult & result) {
+            [this, current_goal_id](const rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::WrappedResult & result) {
+                // Check if this callback is for the current goal
+                if (current_goal_id != goal_id_counter_) {
+                    RCLCPP_WARN(this->get_logger(), "Ignoring stale navigation result callback (goal_id: %lu, current: %lu, state: %s)", 
+                               current_goal_id, goal_id_counter_, getStateName(current_state_).c_str());
+                    return;
+                }
+                
                 action_completed_ = true;
                 switch(result.code) {
                     case rclcpp_action::ResultCode::SUCCEEDED:
-                        RCLCPP_INFO(this->get_logger(), "Navigation action succeeded");
+                        RCLCPP_INFO(this->get_logger(), "Navigation action succeeded (goal_id: %lu, state: %s)", 
+                                   current_goal_id, getStateName(current_state_).c_str());
                         action_succeeded_ = true;
                         break;
                     case rclcpp_action::ResultCode::ABORTED:
-                        RCLCPP_WARN(this->get_logger(), "Navigation action was aborted");
+                        RCLCPP_WARN(this->get_logger(), "Navigation action was aborted (goal_id: %lu, state: %s)", 
+                                   current_goal_id, getStateName(current_state_).c_str());
                         action_succeeded_ = false;
                         break;
                     case rclcpp_action::ResultCode::CANCELED:
-                        RCLCPP_WARN(this->get_logger(), "Navigation action was canceled");
+                        RCLCPP_WARN(this->get_logger(), "Navigation action was canceled (goal_id: %lu, state: %s)", 
+                                   current_goal_id, getStateName(current_state_).c_str());
                         action_succeeded_ = false;
                         break;
                     default:
-                        RCLCPP_ERROR(this->get_logger(), "Unknown navigation action result code");
+                        RCLCPP_ERROR(this->get_logger(), "Unknown navigation action result code: %d (goal_id: %lu, state: %s)", 
+                                   static_cast<int>(result.code), current_goal_id, getStateName(current_state_).c_str());
                         action_succeeded_ = false;
                         break;
                 }
@@ -387,12 +408,13 @@ private:
         // Send the goal (async_send_goal returns a future, we handle it in the goal_response_callback)
         navigation_action_client_->async_send_goal(goal_msg, send_goal_options);
         
-        RCLCPP_INFO(this->get_logger(), "Sent navigation goal: x=%.2f, y=%.2f, theta=%.2f", x, y, theta);
+        RCLCPP_INFO(this->get_logger(), "Sent navigation goal: x=%.2f, y=%.2f, theta=%.2f (goal_id: %lu, state: %s)", 
+                   x, y, theta, current_goal_id, getStateName(current_state_).c_str());
     }
     
     void cancel_navigation_action() {
         if (current_goal_handle_) {
-            RCLCPP_INFO(this->get_logger(), "Canceling navigation action");
+            RCLCPP_WARN(this->get_logger(), "CANCEL_NAVIGATION_ACTION called from state: %s", getStateName(current_state_).c_str());
             
             // Use async_cancel_goal with a callback to handle the cancellation result
             navigation_action_client_->async_cancel_goal(current_goal_handle_,
