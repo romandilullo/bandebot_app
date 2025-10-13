@@ -24,6 +24,8 @@
 #include <rogue_droids_interfaces/action/go_to_relative_pose.hpp>
 #include <std_msgs/msg/u_int8.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 #include "../../mulita/include/mulita_defines.h"
 #include "../../mulita/include/bandebot_defines.h"
 
@@ -101,7 +103,10 @@ private:
     // Current pose storage
     geometry_msgs::msg::Pose initial_pose_;
     bool initial_pose_valid_ = false;
-    
+
+     // Last known pose from navigation completion
+    geometry_msgs::msg::Pose last_known_pose_;
+
     // ROS2 components
     rclcpp::Subscription<rogue_droids_interfaces::msg::CanFrame>::SharedPtr app_state_subscriber_;
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr catering_mode_state_publisher_;
@@ -120,8 +125,7 @@ private:
     bool action_succeeded_ = false;
     uint64_t goal_id_counter_ = 0;
     
-    // Last known pose from navigation completion
-    geometry_msgs::msg::Pose last_known_pose_;
+
     
     void app_state_callback(const rogue_droids_interfaces::msg::CanFrame::SharedPtr msg) {
         if (msg->len >= 1) {
@@ -269,6 +273,7 @@ private:
                     auto response = result.get();
                     if (response->success) {
                         initial_pose_ = response->pose;
+                        last_known_pose_ = response->pose;
                         initial_pose_valid_ = true;
                         RCLCPP_INFO(this->get_logger(), "Current pose updated: x=%.2f, y=%.2f, z=%.2f", 
                                    initial_pose_.position.x, initial_pose_.position.y, initial_pose_.position.z);
@@ -307,10 +312,12 @@ private:
                         RCLCPP_INFO(this->get_logger(), "Free spot found at x=%.2f, y=%.2f, section=%d", 
                                    response->relative_x, response->relative_y, response->section_id);
 
-                        // TODO: find Theta that points from new x,y to initial_pose_
+                        // Calculate corrected relative pose within catering radius and pointing towards initial pose
+                        auto [corrected_x, corrected_y, corrected_w] = calculateCorrectedRelativePose(
+                            response->relative_x, response->relative_y);
 
-                        // Call navigation with returned values
-                        call_navigation_action(response->relative_x, response->relative_y, M_PI);
+                        // Call navigation with corrected values
+                        call_navigation_action(corrected_x, corrected_y, corrected_w);
                         setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
                     } else {
                         RCLCPP_WARN(this->get_logger(), "Failed to find free spot: %s. Using fallback navigation after brief delay.", 
@@ -422,6 +429,88 @@ private:
                    x, y, theta, current_goal_id, getStateName(current_state_).c_str());
     }
     
+    std::tuple<double, double, double> calculateCorrectedRelativePose(double relative_x, double relative_y) {
+        if (!initial_pose_valid_) {
+            RCLCPP_WARN(this->get_logger(), "Cannot calculate corrected pose: initial pose not valid");
+            return std::make_tuple(relative_x, relative_y, 0.0);
+        }
+        
+        // Use last_known_pose_ if available, otherwise use initial_pose_
+        geometry_msgs::msg::Pose reference_pose = last_known_pose_;
+        if (last_known_pose_.position.x == 0.0 && last_known_pose_.position.y == 0.0) {
+            reference_pose = initial_pose_;
+            RCLCPP_DEBUG(this->get_logger(), "Using initial_pose as reference");
+        } else {
+            RCLCPP_DEBUG(this->get_logger(), "Using last_known_pose as reference");
+        }
+        
+        // Convert relative coordinates to world coordinates from current reference position
+        tf2::Quaternion q_ref(
+            reference_pose.orientation.x,
+            reference_pose.orientation.y,
+            reference_pose.orientation.z,
+            reference_pose.orientation.w);
+        tf2::Matrix3x3 m_ref(q_ref);
+        double roll, pitch, yaw_ref;
+        m_ref.getRPY(roll, pitch, yaw_ref);
+        
+        // Transform relative position to world coordinates
+        double cos_theta = std::cos(yaw_ref);
+        double sin_theta = std::sin(yaw_ref);
+        double world_x_offset = relative_x * cos_theta - relative_y * sin_theta;
+        double world_y_offset = relative_x * sin_theta + relative_y * cos_theta;
+        
+        // Calculate target position in world coordinates
+        double target_world_x = reference_pose.position.x + world_x_offset;
+        double target_world_y = reference_pose.position.y + world_y_offset;
+        
+        // Calculate distance from target to initial pose
+        double dx_to_initial = target_world_x - initial_pose_.position.x;
+        double dy_to_initial = target_world_y - initial_pose_.position.y;
+        double distance_to_initial = std::sqrt(dx_to_initial * dx_to_initial + dy_to_initial * dy_to_initial);
+        
+        // Correct position if it's outside the catering radius
+        double corrected_world_x = target_world_x;
+        double corrected_world_y = target_world_y;
+        
+        if (distance_to_initial > catering_radius_) {
+            // Scale down the position to be within the catering radius
+            double scale_factor = catering_radius_ / distance_to_initial;
+            corrected_world_x = initial_pose_.position.x + dx_to_initial * scale_factor;
+            corrected_world_y = initial_pose_.position.y + dy_to_initial * scale_factor;
+            
+            RCLCPP_INFO(this->get_logger(), "Position corrected: distance %.2f > radius %.2f, scaled by %.3f", 
+                       distance_to_initial, catering_radius_, scale_factor);
+        }
+        
+        // Calculate corrected relative coordinates from current reference position
+        double corrected_world_dx = corrected_world_x - reference_pose.position.x;
+        double corrected_world_dy = corrected_world_y - reference_pose.position.y;
+        
+        // Transform back to relative coordinates
+        double corrected_relative_x = corrected_world_dx * cos_theta + corrected_world_dy * sin_theta;
+        double corrected_relative_y = -corrected_world_dx * sin_theta + corrected_world_dy * cos_theta;
+        
+        // Calculate angle to point towards initial pose from the corrected target position
+        double angle_to_initial = std::atan2(
+            initial_pose_.position.y - corrected_world_y,
+            initial_pose_.position.x - corrected_world_x
+        );
+        
+        // Calculate relative angle (target_angle - current_angle)
+        double corrected_relative_w = angle_to_initial - yaw_ref;
+        
+        // Normalize angle to [-π, π]
+        while (corrected_relative_w > M_PI) corrected_relative_w -= 2 * M_PI;
+        while (corrected_relative_w < -M_PI) corrected_relative_w += 2 * M_PI;
+        
+        RCLCPP_INFO(this->get_logger(), 
+                   "Pose correction: original(%.2f, %.2f) -> corrected(%.2f, %.2f, %.2f rad)", 
+                   relative_x, relative_y, corrected_relative_x, corrected_relative_y, corrected_relative_w);
+        
+        return std::make_tuple(corrected_relative_x, corrected_relative_y, corrected_relative_w);
+    }
+
     void cancel_navigation_action() {
         if (current_goal_handle_) {
             RCLCPP_WARN(this->get_logger(), "CANCEL_NAVIGATION_ACTION called from state: %s", getStateName(current_state_).c_str());

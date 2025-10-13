@@ -12,12 +12,14 @@ find_package(rclcpp_action REQUIRED)
 find_package(rogue_droids_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 add_executable(bandebot_node src/bandebot_node.cpp src/bandebot_digital_twin.cpp)
 ament_target_dependencies(bandebot_node rclcpp rogue_droids_interfaces geometry_msgs)
 
 add_executable(catering_node src/catering_node.cpp)
-ament_target_dependencies(catering_node rclcpp rclcpp_action rogue_droids_interfaces std_msgs)
+ament_target_dependencies(catering_node rclcpp rclcpp_action rogue_droids_interfaces std_msgs tf2 tf2_geometry_msgs)
 
 target_include_directories(bandebot_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
