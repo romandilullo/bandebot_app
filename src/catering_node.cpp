@@ -301,8 +301,13 @@ private:
         setState(BANDEBOT_CATERING_STATE::FindingEmptySpot);
         
         auto request = std::make_shared<rogue_droids_interfaces::srv::FindFreeSpot::Request>();
-        request->radius = catering_radius_; // Use the catering radius parameter
-        
+
+        // Find spot withing: catering_radius_ + distance(current pose, initial pose)
+        float distance = std::hypot(last_known_pose_.position.x - initial_pose_.position.x,
+                                     last_known_pose_.position.y - initial_pose_.position.y);
+                                     
+        request->radius = catering_radius_ + distance;
+
         find_free_spot_client_->async_send_request(request,
             [this](rclcpp::Client<rogue_droids_interfaces::srv::FindFreeSpot>::SharedFuture result) {
                 try {
