@@ -87,7 +87,7 @@ public:
         // Publish initial catering state
         setState(BANDEBOT_CATERING_STATE::Standby);
         
-        RCLCPP_INFO(this->get_logger(), "Catering node initialized - State: Standby");
+        RCLCPP_INFO(this->get_logger(), "Catering node initialized");
     }
 
 private:
@@ -126,7 +126,6 @@ private:
     uint64_t goal_id_counter_ = 0;
     
 
-    
     void app_state_callback(const rogue_droids_interfaces::msg::CanFrame::SharedPtr msg) {
         if (msg->len >= 1) {
             current_app_state_ = static_cast<BANDEBOT_APP_STATE>(msg->data[0]);
