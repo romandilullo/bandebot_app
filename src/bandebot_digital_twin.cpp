@@ -222,7 +222,8 @@ bool BandebotTwin::StartLoading(uint16_t mode) {
 
     mode = mode;
 
-    if( currentBandebotState == BANDEBOT_APP_STATE::ReadyUnloaded )
+    if((currentBandebotState == BANDEBOT_APP_STATE::ReadyUnloaded) ||
+       (currentBandebotState == BANDEBOT_APP_STATE::ReadyLoaded))
     {
         currentBandebotState = BANDEBOT_APP_STATE::Loading;
         return true;
@@ -253,7 +254,8 @@ bool BandebotTwin::StartUnloading(uint16_t mode) {
 
     mode = mode;
 
-    if( (currentBandebotState == BANDEBOT_APP_STATE::Loading) || (currentBandebotState == BANDEBOT_APP_STATE::ReadyLoaded))
+    if( (currentBandebotState == BANDEBOT_APP_STATE::Loading) || 
+        (currentBandebotState == BANDEBOT_APP_STATE::ReadyLoaded))
     {
         currentBandebotState = BANDEBOT_APP_STATE::Unloading;
         return true;

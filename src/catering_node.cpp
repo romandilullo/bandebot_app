@@ -188,23 +188,26 @@ private:
             return;
         }
         
-        // Can only stop catering if in ServingFood state
-        if (current_state_ != BANDEBOT_CATERING_STATE::ServingFood) {
-            response->success = false;
-            response->message = "Can only stop catering when in ServingFood state";
-            RCLCPP_WARN(this->get_logger(), "Stop catering rejected: Not in ServingFood state");
-            return;
+        // Cancel any ongoing navigation action if active
+        if (current_state_ == BANDEBOT_CATERING_STATE::MovingToEmptySpot || 
+            current_state_ == BANDEBOT_CATERING_STATE::Turning180Degrees) {
+            RCLCPP_INFO(this->get_logger(), "Canceling navigation action due to stop catering request");
+            cancel_navigation_action();
         }
         
-        // Call stop serving before returning to Standby
-        call_stop_serving();
+        // Call stop serving if currently serving or in serving-related states
+        if (current_state_ == BANDEBOT_CATERING_STATE::ServingFood ||
+            current_state_ == BANDEBOT_CATERING_STATE::WaitingServingStarted ||
+            current_state_ == BANDEBOT_CATERING_STATE::WaitingServingStopped) {
+            call_stop_serving();
+        }
         
-        // Return to Standby state
+        // Return to Standby state from any catering state
         setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
         
         response->success = true;
         response->message = "Catering stopped successfully";
-        RCLCPP_INFO(this->get_logger(), "Catering stopped");
+        RCLCPP_INFO(this->get_logger(), "Catering stopped from state: %s", getStateName(current_state_).c_str());
     }
     
     void call_start_serving() {
