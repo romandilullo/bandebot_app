@@ -608,7 +608,7 @@ private:
 
                 ros_msg.len = 2;
                 ros_msg.data[0] = tray_id;
-                ros_msg.data[1] = requested_state ? 255 : 0;     // Illumination state (0 for OFF, 255 for ON)
+                ros_msg.data[1] = requested_state ? uint8_t(SIDELIGHTS_COLOR::Purple) : uint8_t(SIDELIGHTS_COLOR::Off);
 
                 tray_illumination_requested_state_publisher_->publish(ros_msg);
             }            
