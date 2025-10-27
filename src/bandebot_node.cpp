@@ -217,7 +217,6 @@ private:
 
             case BANDEBOT_APP_STATE::ApplicationReady:
                 // UpdateSidelightsMode(SIDELIGHTS_MODE::Off);
-                allTrayLEDsOff();
                 break;
 
             case BANDEBOT_APP_STATE::CalibratingHardware:
@@ -241,12 +240,9 @@ private:
 
 
             case BANDEBOT_APP_STATE::ReadyUnloaded:
-                allTrayLEDsOff();
                 break;
 
             case BANDEBOT_APP_STATE::Loading:
-
-                allTrayLEDsOn();
 
                 /* 
                     For each elevator, check if the tray is occupied and how long it has been occupied.
@@ -270,8 +266,6 @@ private:
 
             case BANDEBOT_APP_STATE::Unloading:
 
-                allTrayLEDsOn();
-
                 /* 
                     For each elevator, check if the tray is empty and how long it has been empty.
                     If the tray is empty for more than 5 seconds and tray position is not the bottom one (position 11),
@@ -294,23 +288,14 @@ private:
 
             case BANDEBOT_APP_STATE::ReadyLoaded:
 
-                allTrayLEDsOff();
                 break;
 
 
             case BANDEBOT_APP_STATE::Serving:
 
-                if( bandebot_twin_.currentMobileBaseState == MULITA_ROBOT_STATE::ReadyMoving ) {
-
-                    allTrayLEDsOff();
-
-                } else {
-
-                    bool trayLedState;
+                if( bandebot_twin_.currentMobileBaseState != MULITA_ROBOT_STATE::ReadyMoving ) {
 
                     for(uint8_t i = 0; i < APP_ELEVATOR_COUNT; i++) {
-
-                        trayLedState = false;
 
                         if( bandebot_twin_.elevators[i].GetPositionState() == CURRENT_TRAY_POSITION_STATE::Stopped) {
 
@@ -319,7 +304,6 @@ private:
                                 case TRAY_CONTENT_STATE::Occupied:
                                 case TRAY_CONTENT_STATE::MovementDetected:
                                     // LED ON
-                                    trayLedState = true;
                                     break;
 
                                 case TRAY_CONTENT_STATE::Empty:
@@ -336,12 +320,7 @@ private:
                                 default:
                                     break;
                             }
-
-                        } else {
-                            // LED OFF
                         }
-
-                        requestTrayIlumination(i+1, trayLedState);
                     }
                 
                     if( bandebot_twin_.CheckIfAllTraysEmpty() ) {
