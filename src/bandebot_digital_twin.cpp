@@ -4,7 +4,7 @@
  * 
  * 
  * Created: 05/05/2025
- * Last Modified: 01/08/2025
+ * Last Modified: 28/10/2025
  * 
  *****************************************************************************/
 
@@ -47,17 +47,21 @@ void BandebotTwin::ProcessHwInformation(rclcpp::Time time_stamp, uint8_t board_i
     }
 }
 
-void BandebotTwin::ProcessTrayContentState(rclcpp::Time time_stamp, uint8_t tray_1, uint8_t tray_2, uint8_t tray_3, uint8_t tray_4,
+bool BandebotTwin::ProcessTrayContentState(rclcpp::Time time_stamp, uint8_t tray_1, uint8_t tray_2, uint8_t tray_3, uint8_t tray_4,
                                             uint8_t tray_5, uint8_t tray_6, uint8_t tray_7, uint8_t tray_8) {
 
-    elevators[0].SetContentState(tray_1, time_stamp);
-    elevators[1].SetContentState(tray_2, time_stamp);
-    elevators[2].SetContentState(tray_3, time_stamp);
-    elevators[3].SetContentState(tray_4, time_stamp);
-    elevators[4].SetContentState(tray_5, time_stamp);
-    elevators[5].SetContentState(tray_6, time_stamp);
-    elevators[6].SetContentState(tray_7, time_stamp);
-    elevators[7].SetContentState(tray_8, time_stamp);
+    bool result = false;
+    
+    result |= elevators[0].SetContentState(tray_1, time_stamp);
+    result |= elevators[1].SetContentState(tray_2, time_stamp);
+    result |= elevators[2].SetContentState(tray_3, time_stamp);
+    result |= elevators[3].SetContentState(tray_4, time_stamp);
+    result |= elevators[4].SetContentState(tray_5, time_stamp);
+    result |= elevators[5].SetContentState(tray_6, time_stamp);
+    result |= elevators[6].SetContentState(tray_7, time_stamp);
+    result |= elevators[7].SetContentState(tray_8, time_stamp);
+
+    return result;
 }
 
 void BandebotTwin::ProcessCurrentTrayPositionState_1_4(rclcpp::Time time_stamp, uint8_t tray_1_pos, uint8_t tray_1_state,

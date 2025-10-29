@@ -4,7 +4,7 @@
  * 
  * 
  * Created: 23/04/2025
- * Last Modified: 09/10/2025
+ * Last Modified: 29/10/2025
  * 
  *****************************************************************************/
 
@@ -125,6 +125,8 @@ private:
     BANDEBOT_APP_STATE last_bandebot_app_state_  = BANDEBOT_APP_STATE::Unknown;
     rclcpp::Time operation_start_time_;
 
+    bool tray_content_state_updated = false;
+
     rclcpp::TimerBase::SharedPtr main_loop_timer_;
     rclcpp::TimerBase::SharedPtr robot_state_update_timer_;
     rclcpp::TimerBase::SharedPtr bandebot_hardware_update_timer_;
@@ -242,8 +244,15 @@ private:
             case BANDEBOT_APP_STATE::ReadyUnloaded:
                 break;
 
+
+            case BANDEBOT_APP_STATE::ReadyLoaded:
+                break;
+
+
             case BANDEBOT_APP_STATE::Loading:
 
+                updateTrayDisplayInfo();
+                
                 /* 
                     For each elevator, check if the tray is occupied and how long it has been occupied.
                     If the tray is occupied for more than 5 seconds and tray position is not the top one (position 1),
@@ -251,13 +260,16 @@ private:
                 */
                 for(uint8_t i = 0; i < APP_ELEVATOR_COUNT; i++) {
 
-                    if( bandebot_twin_.elevators[i].GetTrayPosition() > TOP_TRAY_POSITION ) {
+                    if( bandebot_twin_.elevators[i].GetPositionState() == CURRENT_TRAY_POSITION_STATE::Stopped) {
 
-                        if( bandebot_twin_.elevators[i].trayOccupiedFor(rclcpp::Clock().now(), LOAD_UNLOAD_TRAY_NO_CHANGE_TIMEOUT_SEC) ) {
+                        if( bandebot_twin_.elevators[i].GetTrayPosition() > TOP_TRAY_POSITION ) {
+
+                            if( bandebot_twin_.elevators[i].trayOccupiedFor(rclcpp::Clock().now(), LOAD_UNLOAD_TRAY_NO_CHANGE_TIMEOUT_SEC) ) {
                                 requestTrayPosition(i + 1, bandebot_twin_.elevators[i].GetTrayPosition() - 1); 
                             }
                         }
                     }
+                }
 
                 if( bandebot_twin_.CheckIfAllTraysFull() ) {
                     bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ReadyLoaded;
@@ -265,70 +277,35 @@ private:
                 break;
 
             case BANDEBOT_APP_STATE::Unloading:
+            case BANDEBOT_APP_STATE::Serving:
+
+                updateTrayDisplayInfo();
 
                 /* 
                     For each elevator, check if the tray is empty and how long it has been empty.
                     If the tray is empty for more than 5 seconds and tray position is not the bottom one (position 11),
                     then move the tray to the next position (current position plus one)
                 */
-            for(uint8_t i = 0; i < APP_ELEVATOR_COUNT; i++) {
 
-                    if( bandebot_twin_.elevators[i].GetTrayPosition() < BOTTOM_TRAY_POSITION ) {
+                for(uint8_t i = 0; i < APP_ELEVATOR_COUNT; i++) {
 
-                        if( bandebot_twin_.elevators[i].trayEmptyFor(rclcpp::Clock().now(), LOAD_UNLOAD_TRAY_NO_CHANGE_TIMEOUT_SEC) ) {
-                                requestTrayPosition(i + 1, bandebot_twin_.elevators[i].GetTrayPosition() + 1); 
+                    if( bandebot_twin_.elevators[i].GetPositionState() == CURRENT_TRAY_POSITION_STATE::Stopped) {
+
+                        if( bandebot_twin_.elevators[i].GetTrayPosition() < BOTTOM_TRAY_POSITION ) {
+
+                            if( bandebot_twin_.elevators[i].trayEmptyFor(rclcpp::Clock().now(), LOAD_UNLOAD_TRAY_NO_CHANGE_TIMEOUT_SEC) ) {
+                                    requestTrayPosition(i + 1, bandebot_twin_.elevators[i].GetTrayPosition() + 1); 
                             }
                         }
                     }
-
+                }
+            
                 if( bandebot_twin_.CheckIfAllTraysEmpty() ) {
-                    bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ApplicationReady;
-                }
-                break;
-
-            case BANDEBOT_APP_STATE::ReadyLoaded:
-
-                break;
-
-
-            case BANDEBOT_APP_STATE::Serving:
-
-                if( bandebot_twin_.currentMobileBaseState != MULITA_ROBOT_STATE::ReadyMoving ) {
-
-                    for(uint8_t i = 0; i < APP_ELEVATOR_COUNT; i++) {
-
-                        if( bandebot_twin_.elevators[i].GetPositionState() == CURRENT_TRAY_POSITION_STATE::Stopped) {
-
-                            switch( bandebot_twin_.elevators[i].GetContentState())
-                            {
-                                case TRAY_CONTENT_STATE::Occupied:
-                                case TRAY_CONTENT_STATE::MovementDetected:
-                                    // LED ON
-                                    break;
-
-                                case TRAY_CONTENT_STATE::Empty:
-                                    // LED OFF
-
-                                    // If the tray is empty and the position is not the bottom one, request to move it down
-                                    if( bandebot_twin_.elevators[i].GetTrayPosition() < BOTTOM_TRAY_POSITION ) {
-                                        if( bandebot_twin_.elevators[i].trayEmptyFor(rclcpp::Clock().now(), SERVING_TRAY_NO_CHANGE_TIMEOUT_SEC) ) {
-                                                requestTrayPosition(i + 1, bandebot_twin_.elevators[i].GetTrayPosition() + 1); 
-                                            }
-                                        }
-                                    break;
-
-                                default:
-                                    break;
-                            }
-                        }
-                    }
-                
-                    if( bandebot_twin_.CheckIfAllTraysEmpty() ) {
+                    if( bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Unloading)
+                        bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ApplicationReady;
+                    else
                         bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::Unloading;
-                    }                   
-
                 }
-
                 break;
 
             default:
@@ -357,10 +334,11 @@ private:
     void on_tray_content_state(const rogue_droids_interfaces::msg::CanFrame msg) {
 
         // [TRAY_CONTENT_STATE_1], [TRAY_CONTENT_STATE_2], ... [TRAY_CONTENT_STATE_8]
-        if(msg.len == 8)
-            bandebot_twin_.ProcessTrayContentState(rclcpp::Clock().now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
-                msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
+        if(msg.len == 8) {
 
+            tray_content_state_updated |= bandebot_twin_.ProcessTrayContentState(rclcpp::Clock().now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
+                msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
+        }
     }
     
     void on_current_tray_position_1_4(const rogue_droids_interfaces::msg::CanFrame msg) {
@@ -651,6 +629,73 @@ private:
             });
         
         RCLCPP_DEBUG(this->get_logger(), "Sidelights service call sent asynchronously");
+    }
+
+    void updateTrayDisplayInfo(void) {
+
+        if( tray_content_state_updated ) {
+
+            tray_content_state_updated = false;
+
+            TRAY_CONTENT_STATE tray_state;
+
+            // update content state information!
+            for(uint8_t i = 0; i < APP_ELEVATOR_COUNT; i++) {
+
+                tray_state = bandebot_twin_.elevators[i].GetContentState();
+
+                RCLCPP_INFO(this->get_logger(), "Tray: %d - %s", (i+1), getStateName(tray_state).c_str() );
+
+                // switch( tray_state ) {
+
+                //     case TRAY_CONTENT_STATE::Unknown:
+                //         break;
+                //     case TRAY_CONTENT_STATE::Empty:
+                //         break;
+                //     case TRAY_CONTENT_STATE::Empty_MovementDetected_WaitingStableUltrasound:
+                //         break;
+                //     case TRAY_CONTENT_STATE::PotentiallyOccupied__WaitingStableRgb_LedOn:
+                //         break;
+                //     case TRAY_CONTENT_STATE::PotentiallyOccupied__WaitingStableRgb_LedOff:
+                //         break;
+                //     case TRAY_CONTENT_STATE::Occupied:
+                //         break;
+                //     case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOn:
+                //         break;
+                //     case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOff:
+                //         break;
+                //     case TRAY_CONTENT_STATE::Occupied_MovementDetected_WaitingStableUltrasound:
+                //         break;
+                //     case TRAY_CONTENT_STATE::PotentiallyEmpty__WaitingStableRgb_LedOn:
+                //         break;
+                //     case TRAY_CONTENT_STATE::PotentiallyEmpty__WaitingStableRgb_LedOff:
+                //         break;
+                //     case TRAY_CONTENT_STATE::PartiallyOccupied:
+                //         break;
+                //     case TRAY_CONTENT_STATE::PartiallyOccupied_MovementDetected_WaitingStableUltrasound:
+                //         break;
+
+                // }
+            }
+        }
+    }
+
+    std::string getStateName(TRAY_CONTENT_STATE state) {
+        switch(state) {
+            case TRAY_CONTENT_STATE::Empty: return "Empty";
+            case TRAY_CONTENT_STATE::Empty_MovementDetected_WaitingStableUltrasound: return "Empty - MovementDetected - WaitingStableUltrasound";
+            case TRAY_CONTENT_STATE::PotentiallyOccupied_WaitingStableRgb_LedOn: return "PotentiallyOccupied - aitingStableRgb - LedOn";
+            case TRAY_CONTENT_STATE::PotentiallyOccupied_WaitingStableRgb_LedOff: return "PotentiallyOccupied - WaitingStableRgb - LedOff";
+            case TRAY_CONTENT_STATE::Occupied: return "Occupied";
+            case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOn: return "Occupied - WaitingStableRgb - LedOn";
+            case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOff: return "Occupied - WaitingStableRgb - LedOff";
+            case TRAY_CONTENT_STATE::Occupied_MovementDetected_WaitingStableUltrasound: return "Occupied - MovementDetected - WaitingStableUltrasound";
+            case TRAY_CONTENT_STATE::PotentiallyEmpty_WaitingStableRgb_LedOn: return "PotentiallyEmpty - WaitingStableRgb - LedOn";
+            case TRAY_CONTENT_STATE::PotentiallyEmpty_WaitingStableRgb_LedOff: return "PotentiallyEmpty - WaitingStableRgb - LedOff";
+            case TRAY_CONTENT_STATE::PartiallyOccupied: return "PartiallyOccupied";
+            case TRAY_CONTENT_STATE::PartiallyOccupied_MovementDetected_WaitingStableUltrasound: return "PartiallyOccupied - MovementDetected - WaitingStableUltrasound";
+            default: return "Unknown";
+        }
     }
 
 };

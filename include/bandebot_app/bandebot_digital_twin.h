@@ -34,10 +34,15 @@ public:
     rclcpp::Time GetContentStateLastChange() const {
         return contentStateLastChange;
     }
-    void SetContentState(uint8_t new_state, const rclcpp::Time& time) {
-        if(contentState != (TRAY_CONTENT_STATE)new_state)
+    bool SetContentState(uint8_t new_state, const rclcpp::Time& time) {
+
+        if( contentState != (TRAY_CONTENT_STATE)new_state ) {
+
             contentStateLastChange = time;
-        contentState = (TRAY_CONTENT_STATE)new_state;
+            contentState = (TRAY_CONTENT_STATE)new_state;
+            return true;
+        }
+        return false;
     }
     uint16_t GetDistanceMm() const {
         return distanceMm;
@@ -80,7 +85,7 @@ public:
     BandebotTwin();
     void ProcessHwInformation(rclcpp::Time time_stamp, uint8_t board_id, uint8_t board_status, uint16_t can_error_count);
 
-    void ProcessTrayContentState(rclcpp::Time time_stamp, uint8_t tray_1, uint8_t tray_2, uint8_t tray_3, uint8_t tray_4,
+    bool ProcessTrayContentState(rclcpp::Time time_stamp, uint8_t tray_1, uint8_t tray_2, uint8_t tray_3, uint8_t tray_4,
                                  uint8_t tray_5, uint8_t tray_6, uint8_t tray_7, uint8_t tray_8);
 
     void ProcessCurrentTrayPositionState_1_4(rclcpp::Time time_stamp, uint8_t tray_1_pos, uint8_t tray_1_state,
