@@ -646,36 +646,63 @@ private:
 
                 RCLCPP_INFO(this->get_logger(), "Tray: %d - %s", (i+1), getStateName(tray_state).c_str() );
 
-                // switch( tray_state ) {
+                switch( tray_state ) {
 
-                //     case TRAY_CONTENT_STATE::Unknown:
-                //         break;
-                //     case TRAY_CONTENT_STATE::Empty:
-                //         break;
-                //     case TRAY_CONTENT_STATE::Empty_MovementDetected_WaitingStableUltrasound:
-                //         break;
-                //     case TRAY_CONTENT_STATE::PotentiallyOccupied__WaitingStableRgb_LedOn:
-                //         break;
-                //     case TRAY_CONTENT_STATE::PotentiallyOccupied__WaitingStableRgb_LedOff:
-                //         break;
-                //     case TRAY_CONTENT_STATE::Occupied:
-                //         break;
-                //     case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOn:
-                //         break;
-                //     case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOff:
-                //         break;
-                //     case TRAY_CONTENT_STATE::Occupied_MovementDetected_WaitingStableUltrasound:
-                //         break;
-                //     case TRAY_CONTENT_STATE::PotentiallyEmpty__WaitingStableRgb_LedOn:
-                //         break;
-                //     case TRAY_CONTENT_STATE::PotentiallyEmpty__WaitingStableRgb_LedOff:
-                //         break;
-                //     case TRAY_CONTENT_STATE::PartiallyOccupied:
-                //         break;
-                //     case TRAY_CONTENT_STATE::PartiallyOccupied_MovementDetected_WaitingStableUltrasound:
-                //         break;
+                    case TRAY_CONTENT_STATE::Unknown:
+                        break;
+                    case TRAY_CONTENT_STATE::Empty:
 
-                // }
+                        if( bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Loading ) {
+
+                            RCLCPP_INFO(this->get_logger(), "Tray: %d - Coloque porcion bandeja", (i+1) );
+
+                        } else if( bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Unloading ||
+                                bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Serving ) {
+
+                            RCLCPP_INFO(this->get_logger(), "Tray: %d - Espere", (i+1) );
+                        }
+                        break;
+                    case TRAY_CONTENT_STATE::Empty_MovementDetected_WaitingStableUltrasound:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Termine de cargar la porcion", (i+1) );
+                        break;
+                    case TRAY_CONTENT_STATE::PotentiallyOccupied_WaitingStableRgb_LedOn:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
+                        break;
+                    case TRAY_CONTENT_STATE::PotentiallyOccupied_WaitingStableRgb_LedOff:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
+                        break;
+                    case TRAY_CONTENT_STATE::Occupied:
+                        if( bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Loading )
+                        {
+                            RCLCPP_INFO(this->get_logger(), "Tray: %d - Espere", (i+1) );
+                        } else if( bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Unloading ||
+                                bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Serving ) {
+                            RCLCPP_INFO(this->get_logger(), "Tray: %d - Retire la porcion", (i+1) );
+                        }
+                        break;
+                    case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOn:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Espere...", (i+1) );
+                        break;
+                    case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOff:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Espere...", (i+1) );
+                        break;
+                    case TRAY_CONTENT_STATE::Occupied_MovementDetected_WaitingStableUltrasound:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Retire la porcion", (i+1) );
+                        break;
+                    case TRAY_CONTENT_STATE::PotentiallyEmpty_WaitingStableRgb_LedOn:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
+                        break;
+                    case TRAY_CONTENT_STATE::PotentiallyEmpty_WaitingStableRgb_LedOff:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
+                        break;
+                    case TRAY_CONTENT_STATE::PartiallyOccupied:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Retire las sobras en la bandeja", (i+1) );
+                        break;
+                    case TRAY_CONTENT_STATE::PartiallyOccupied_MovementDetected_WaitingStableUltrasound:
+                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
+                        break;
+
+                }
             }
         }
     }
