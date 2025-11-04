@@ -4,7 +4,7 @@
  * 
  * 
  * Created: 23/04/2025
- * Last Modified: 29/10/2025
+ * Last Modified: 04/11/2025
  * 
  *****************************************************************************/
 
@@ -250,8 +250,6 @@ private:
 
 
             case BANDEBOT_APP_STATE::Loading:
-
-                updateTrayDisplayInfo();
                 
                 /* 
                     For each elevator, check if the tray is occupied and how long it has been occupied.
@@ -278,8 +276,6 @@ private:
 
             case BANDEBOT_APP_STATE::Unloading:
             case BANDEBOT_APP_STATE::Serving:
-
-                updateTrayDisplayInfo();
 
                 /* 
                     For each elevator, check if the tray is empty and how long it has been empty.
@@ -630,101 +626,6 @@ private:
         
         RCLCPP_DEBUG(this->get_logger(), "Sidelights service call sent asynchronously");
     }
-
-    void updateTrayDisplayInfo(void) {
-
-        if( tray_content_state_updated ) {
-
-            tray_content_state_updated = false;
-
-            TRAY_CONTENT_STATE tray_state;
-
-            // update content state information!
-            for(uint8_t i = 0; i < APP_ELEVATOR_COUNT; i++) {
-
-                tray_state = bandebot_twin_.elevators[i].GetContentState();
-
-                RCLCPP_INFO(this->get_logger(), "Tray: %d - %s", (i+1), getStateName(tray_state).c_str() );
-
-                switch( tray_state ) {
-
-                    case TRAY_CONTENT_STATE::Unknown:
-                        break;
-                    case TRAY_CONTENT_STATE::Empty:
-
-                        if( bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Loading ) {
-
-                            RCLCPP_INFO(this->get_logger(), "Tray: %d - Coloque porcion bandeja", (i+1) );
-
-                        } else if( bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Unloading ||
-                                bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Serving ) {
-
-                            RCLCPP_INFO(this->get_logger(), "Tray: %d - Espere", (i+1) );
-                        }
-                        break;
-                    case TRAY_CONTENT_STATE::Empty_MovementDetected_WaitingStableUltrasound:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Termine de cargar la porcion", (i+1) );
-                        break;
-                    case TRAY_CONTENT_STATE::PotentiallyOccupied_WaitingStableRgb_LedOn:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
-                        break;
-                    case TRAY_CONTENT_STATE::PotentiallyOccupied_WaitingStableRgb_LedOff:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
-                        break;
-                    case TRAY_CONTENT_STATE::Occupied:
-                        if( bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Loading )
-                        {
-                            RCLCPP_INFO(this->get_logger(), "Tray: %d - Espere", (i+1) );
-                        } else if( bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Unloading ||
-                                bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Serving ) {
-                            RCLCPP_INFO(this->get_logger(), "Tray: %d - Retire la porcion", (i+1) );
-                        }
-                        break;
-                    case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOn:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Espere...", (i+1) );
-                        break;
-                    case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOff:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Espere...", (i+1) );
-                        break;
-                    case TRAY_CONTENT_STATE::Occupied_MovementDetected_WaitingStableUltrasound:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Retire la porcion", (i+1) );
-                        break;
-                    case TRAY_CONTENT_STATE::PotentiallyEmpty_WaitingStableRgb_LedOn:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
-                        break;
-                    case TRAY_CONTENT_STATE::PotentiallyEmpty_WaitingStableRgb_LedOff:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
-                        break;
-                    case TRAY_CONTENT_STATE::PartiallyOccupied:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Retire las sobras en la bandeja", (i+1) );
-                        break;
-                    case TRAY_CONTENT_STATE::PartiallyOccupied_MovementDetected_WaitingStableUltrasound:
-                        RCLCPP_INFO(this->get_logger(), "Tray: %d - Analizando, espere...", (i+1) );
-                        break;
-
-                }
-            }
-        }
-    }
-
-    std::string getStateName(TRAY_CONTENT_STATE state) {
-        switch(state) {
-            case TRAY_CONTENT_STATE::Empty: return "Empty";
-            case TRAY_CONTENT_STATE::Empty_MovementDetected_WaitingStableUltrasound: return "Empty - MovementDetected - WaitingStableUltrasound";
-            case TRAY_CONTENT_STATE::PotentiallyOccupied_WaitingStableRgb_LedOn: return "PotentiallyOccupied - aitingStableRgb - LedOn";
-            case TRAY_CONTENT_STATE::PotentiallyOccupied_WaitingStableRgb_LedOff: return "PotentiallyOccupied - WaitingStableRgb - LedOff";
-            case TRAY_CONTENT_STATE::Occupied: return "Occupied";
-            case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOn: return "Occupied - WaitingStableRgb - LedOn";
-            case TRAY_CONTENT_STATE::Occupied_WaitingStableRgb_LedOff: return "Occupied - WaitingStableRgb - LedOff";
-            case TRAY_CONTENT_STATE::Occupied_MovementDetected_WaitingStableUltrasound: return "Occupied - MovementDetected - WaitingStableUltrasound";
-            case TRAY_CONTENT_STATE::PotentiallyEmpty_WaitingStableRgb_LedOn: return "PotentiallyEmpty - WaitingStableRgb - LedOn";
-            case TRAY_CONTENT_STATE::PotentiallyEmpty_WaitingStableRgb_LedOff: return "PotentiallyEmpty - WaitingStableRgb - LedOff";
-            case TRAY_CONTENT_STATE::PartiallyOccupied: return "PartiallyOccupied";
-            case TRAY_CONTENT_STATE::PartiallyOccupied_MovementDetected_WaitingStableUltrasound: return "PartiallyOccupied - MovementDetected - WaitingStableUltrasound";
-            default: return "Unknown";
-        }
-    }
-
 };
 
 int main(int argc, char **argv)
