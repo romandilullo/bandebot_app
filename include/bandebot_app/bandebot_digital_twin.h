@@ -6,9 +6,6 @@
 #include "../../mulita/include/mulita_defines.h"
 #include "../../mulita/include/bandebot_defines.h"
 
-#define BOTTOM_TRAY_POSITION 11
-#define TOP_TRAY_POSITION 1
-
 class ElevatorTwin
 {
 public:
