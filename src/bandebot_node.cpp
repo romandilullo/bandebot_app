@@ -102,7 +102,7 @@ public:
         // Create service client for sidelights control
         sidelights_client_ = this->create_client<rogue_droids_interfaces::srv::SetSidelights>("mulita/set_sidelights");
         
-        operation_start_time_ = rclcpp::Clock().now();
+        operation_start_time_ = this->get_clock()->now();
 
         messageBandebotAppState();
 
@@ -160,7 +160,7 @@ private:
 
     void mainLoopFunction()
     {
-        auto elapsed_time = rclcpp::Clock().now() - operation_start_time_;
+        auto elapsed_time = this->get_clock()->now() - operation_start_time_;
 
         switch (bandebot_twin_.currentMobileBaseState)
         {
@@ -188,7 +188,7 @@ private:
                 messagePowerRelayControl(true, true);
 
                 bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::IdentifyingHardware;
-                operation_start_time_ = rclcpp::Clock().now();                
+                operation_start_time_ = this->get_clock()->now();                
 
                 break;
 
@@ -262,7 +262,7 @@ private:
 
                         if( bandebot_twin_.elevators[i].GetTrayPosition() > TOP_TRAY_POSITION ) {
 
-                            if( bandebot_twin_.elevators[i].trayOccupiedFor(rclcpp::Clock().now(), LOAD_UNLOAD_TRAY_NO_CHANGE_TIMEOUT_SEC) ) {
+                            if( bandebot_twin_.elevators[i].trayOccupiedFor(this->get_clock()->now(), LOAD_UNLOAD_TRAY_NO_CHANGE_TIMEOUT_SEC) ) {
                                 requestTrayPosition(i + 1, bandebot_twin_.elevators[i].GetTrayPosition() - 1); 
                             }
                         }
@@ -289,7 +289,7 @@ private:
 
                         if( bandebot_twin_.elevators[i].GetTrayPosition() < BOTTOM_TRAY_POSITION ) {
 
-                            if( bandebot_twin_.elevators[i].trayEmptyFor(rclcpp::Clock().now(), LOAD_UNLOAD_TRAY_NO_CHANGE_TIMEOUT_SEC) ) {
+                            if( bandebot_twin_.elevators[i].trayEmptyFor(this->get_clock()->now(), LOAD_UNLOAD_TRAY_NO_CHANGE_TIMEOUT_SEC) ) {
                                     requestTrayPosition(i + 1, bandebot_twin_.elevators[i].GetTrayPosition() + 1); 
                             }
                         }
@@ -332,7 +332,7 @@ private:
         // [TRAY_CONTENT_STATE_1], [TRAY_CONTENT_STATE_2], ... [TRAY_CONTENT_STATE_8]
         if(msg.len == 8) {
 
-            tray_content_state_updated |= bandebot_twin_.ProcessTrayContentState(rclcpp::Clock().now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
+            tray_content_state_updated |= bandebot_twin_.ProcessTrayContentState(this->get_clock()->now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
                 msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
         }
     }
@@ -341,7 +341,7 @@ private:
 
         // {tray_1_current_pos},[CURRENT_TRAY_POSITION_STATE_1], , ... {tray_4_current_pos},[CURRENT_TRAY_POSITION_STATE_4] 
         if( msg.len == 8)
-            bandebot_twin_.ProcessCurrentTrayPositionState_1_4(rclcpp::Clock().now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
+            bandebot_twin_.ProcessCurrentTrayPositionState_1_4(this->get_clock()->now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
                 msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
         
     }
@@ -350,7 +350,7 @@ private:
 
         // {tray_5_current_pos},[CURRENT_TRAY_POSITION_STATE_5], , ... {tray_8_current_pos},[CURRENT_TRAY_POSITION_STATE_8]
         if( msg.len == 8)
-            bandebot_twin_.ProcessCurrentTrayPositionState_5_8(rclcpp::Clock().now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
+            bandebot_twin_.ProcessCurrentTrayPositionState_5_8(this->get_clock()->now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
                 msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
         
     }
@@ -367,7 +367,7 @@ private:
 
         // {distance_tray_1_mm}, {distance_tray_2_mm}, ... {distance_tray_8_mm}
         if( msg.len == 8)
-            bandebot_twin_.ProcessTrayMeasuredDistance(rclcpp::Clock().now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
+            bandebot_twin_.ProcessTrayMeasuredDistance(this->get_clock()->now(), msg.data[0], msg.data[1], msg.data[2], msg.data[3],
                 msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
     }
 
@@ -375,7 +375,7 @@ private:
 
         // {battery_voltage}, {current_ucu}, {current_ecus}, {current_motor}
         if( msg.len == 8)
-            bandebot_twin_.ProcessPowerSupplyState(rclcpp::Clock().now(), uint16_t ((msg.data[1] << 8) | msg.data[0]),
+            bandebot_twin_.ProcessPowerSupplyState(this->get_clock()->now(), uint16_t ((msg.data[1] << 8) | msg.data[0]),
                 int16_t ((msg.data[3] << 8) | msg.data[2]), int16_t ((msg.data[5] << 8) | msg.data[4]),
                 int16_t ((msg.data[7] << 8) | msg.data[6]));
     }
@@ -384,7 +384,7 @@ private:
 
         if( msg.len >= 4) {
             uint16_t error_count = static_cast<uint16_t>(msg.data[2]) | (static_cast<uint16_t>(msg.data[3]) << 8);
-            bandebot_twin_.ProcessHwInformation(rclcpp::Clock().now(), msg.data[0], msg.data[1], error_count);
+            bandebot_twin_.ProcessHwInformation(this->get_clock()->now(), msg.data[0], msg.data[1], error_count);
         }
     }
 
@@ -393,7 +393,7 @@ private:
         std::shared_ptr<rogue_droids_interfaces::srv::Calibrate::Response> response)
     {
         response->success = bandebot_twin_.StartCalibration(request->mode);
-        operation_start_time_ = rclcpp::Clock().now();
+    operation_start_time_ = this->get_clock()->now();
     }
 
     void handle_srv_start_loading_(
@@ -487,7 +487,7 @@ private:
             else
                 ros_msg.acu_status = (uint8_t)HARDWARE_STATUS::UNKNOWN;
 
-            if( (rclcpp::Clock().now() - bandebot_twin_.auxiliaryControlUnitLastUpdate).seconds() > 2.0 )
+            if( (this->get_clock()->now() - bandebot_twin_.auxiliaryControlUnitLastUpdate).seconds() > 2.0 )
                 ros_msg.acu_status = (uint8_t)HARDWARE_STATUS::DETECTED_LOST_COMMS;
 
         } else
@@ -503,7 +503,7 @@ private:
             else
                 ros_msg.ucu_status = (uint8_t)HARDWARE_STATUS::UNKNOWN;
 
-            if( (rclcpp::Clock().now() - bandebot_twin_.upperControlUnitLastUpdate).seconds() > 2.0 )
+            if( (this->get_clock()->now() - bandebot_twin_.upperControlUnitLastUpdate).seconds() > 2.0 )
                 ros_msg.ucu_status = (uint8_t)HARDWARE_STATUS::DETECTED_LOST_COMMS;
 
         } else
@@ -519,7 +519,7 @@ private:
             else
                 ros_msg.ecu_1_status = (uint8_t)HARDWARE_STATUS::UNKNOWN;
 
-            if( (rclcpp::Clock().now() - bandebot_twin_.elevatorControlUnit1LastUpdate).seconds() > 2.0 )
+            if( (this->get_clock()->now() - bandebot_twin_.elevatorControlUnit1LastUpdate).seconds() > 2.0 )
                 ros_msg.ecu_1_status = (uint8_t)HARDWARE_STATUS::DETECTED_LOST_COMMS;
 
         } else
@@ -535,7 +535,7 @@ private:
             else
                 ros_msg.ecu_2_status = (uint8_t)HARDWARE_STATUS::UNKNOWN;
 
-            if( (rclcpp::Clock().now() - bandebot_twin_.elevatorControlUnit2LastUpdate).seconds() > 2.0 )
+            if( (this->get_clock()->now() - bandebot_twin_.elevatorControlUnit2LastUpdate).seconds() > 2.0 )
                 ros_msg.ecu_2_status = (uint8_t)HARDWARE_STATUS::DETECTED_LOST_COMMS;
 
         } else
