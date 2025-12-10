@@ -58,7 +58,7 @@ def generate_launch_description():
                 namespace=namespace,
                 output='screen',
                 parameters=[{
-                    'serial_port': '/dev/display_controller',
+                    'serial_port': '/dev/rd_display_controller',
                     'serial_baudrate': 115200,
                 }],
                 remappings=[
