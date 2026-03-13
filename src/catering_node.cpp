@@ -33,10 +33,10 @@ using namespace std::chrono_literals;
 
 #define MIN_CATERING_TIME 10.0
 #define MAX_CATERING_TIME 120.0
-#define MIN_CATERING_RADIUS 0.5
+#define MIN_CATERING_RADIUS 1.0
 #define MAX_CATERING_RADIUS 5.0
 
-#define MAX_TIME_REACHING_POSE 45.0
+#define MAX_TIME_REACHING_POSE 60.0
 #define MAX_TIME_WAITING_SERVING_START_STOP 3.0
 #define MAX_TIME_WAITING_NAV_CANCEL 3.0
 #define MAX_TIME_WAITING_SPOT_SEARCH 3.0
@@ -302,26 +302,57 @@ private:
         }
 
         setState(BANDEBOT_CATERING_STATE::FindingEmptySpot);
-        
-        auto request = std::make_shared<rogue_droids_interfaces::srv::FindFreeSpot::Request>();
 
-        // Find spot withing: catering_radius_ + distance(current pose, initial pose)
-        float distance = std::hypot(last_known_pose_.position.x - initial_pose_.position.x,
+        // Check if current pose is pointing towards center of catering area
+
+        float angle_to_initial = std::atan2(
+            initial_pose_.position.y - last_known_pose_.position.y,
+            initial_pose_.position.x - last_known_pose_.position.x
+        );
+
+        RCLCPP_INFO(this->get_logger(), "Angle to initial pose: %.2f degrees", angle_to_initial * 180.0 / M_PI);
+
+        // TODO: Use orientation to check if robot is generally facing towards initial pose (e.g. within 90 degrees) and if not,
+        // first turn to point towards initial pose before searching for free spot.
+
+
+        
+        // Find current distante to center of catering area
+        float distance_to_center = std::hypot(last_known_pose_.position.x - initial_pose_.position.x,
                                      last_known_pose_.position.y - initial_pose_.position.y);
-                                     
-        request->radius = catering_radius_ + distance;
+
+        float frontal_colition_avoidance_distance = 1; // Minimum distance to obstacles in front to consider a spot valid
+
+        // Find spot within catering area
+        auto request = std::make_shared<rogue_droids_interfaces::srv::FindFreeSpot::Request>();
+        
+        // Search radius is catering radius plus current distance to center plus some extra for collision avoidance
+        request->radius = catering_radius_ + distance_to_center + frontal_colition_avoidance_distance;
 
         find_free_spot_client_->async_send_request(request,
-            [this](rclcpp::Client<rogue_droids_interfaces::srv::FindFreeSpot>::SharedFuture result) {
+            [this, frontal_colition_avoidance_distance](rclcpp::Client<rogue_droids_interfaces::srv::FindFreeSpot>::SharedFuture result) {
                 try {
                     auto response = result.get();
                     if (response->success) {
-                        RCLCPP_INFO(this->get_logger(), "Free spot found at x=%.2f, y=%.2f, section=%d", 
-                                   response->relative_x, response->relative_y, response->section_id);
+                        double adjusted_distance = response->course_distance - frontal_colition_avoidance_distance;
+                        if (adjusted_distance < 0.0) {
+                            adjusted_distance = 0.0;
+                        }
+
+                        const double relative_x = adjusted_distance * std::cos(response->course_angle);
+                        const double relative_y = adjusted_distance * std::sin(response->course_angle);
+
+                        RCLCPP_INFO(this->get_logger(),
+                                   "Free spot found: angle=%.2f deg, raw_distance=%.2f m, adjusted_distance=%.2f m, relative=(%.2f, %.2f)",
+                                   response->course_angle * 180.0 / M_PI,
+                                   response->course_distance,
+                                   adjusted_distance,
+                                   relative_x,
+                                   relative_y);
 
                         // Calculate corrected relative pose within catering radius and pointing towards initial pose
                         auto [corrected_x, corrected_y, corrected_w] = calculateCorrectedRelativePose(
-                            response->relative_x, response->relative_y);
+                            relative_x, relative_y);
 
                         // Call navigation with corrected values
                         call_navigation_action(corrected_x, corrected_y, corrected_w);
@@ -331,7 +362,7 @@ private:
                                    response->message.c_str());
                         // Brief delay before fallback navigation to let systems settle
                         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                        // Fallback navigation if no free spot found - move back slightly and turn 180
+                        // Fallback navigation if no free spot found - move back slightly and turn 180 degrees
                         call_navigation_action(0.0, 0.0, M_PI);
                         setState(BANDEBOT_CATERING_STATE::Turning180Degrees);
                     }
@@ -377,10 +408,14 @@ private:
             };
             
         send_goal_options.feedback_callback = 
-            [this](rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr,
+            [this, current_goal_id](rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr,
                    const std::shared_ptr<const rogue_droids_interfaces::action::GoToRelativePose::Feedback> feedback) {
-                RCLCPP_DEBUG(this->get_logger(), "Navigation feedback: distance remaining: %.2f", 
-                           feedback->distance_remaining);
+                RCLCPP_INFO(this->get_logger(),
+                           "GoToRelativePose feedback (goal_id: %lu, state: %s): distance_remaining=%.3f m, angle_error=%.3f rad",
+                           current_goal_id,
+                           getStateName(current_state_).c_str(),
+                           feedback->distance_remaining,
+                           feedback->angle_error);
             };
             
         send_goal_options.result_callback = 
@@ -392,11 +427,15 @@ private:
                     return;
                 }
                 
-                // Save the final pose from navigation result
-                if (result.result && result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+                // Save final pose whenever the action server provides one.
+                if (result.result) {
                     last_known_pose_ = result.result->final_pose;
-                    RCLCPP_INFO(this->get_logger(), "Navigation completed at position: x=%.2f, y=%.2f (goal_id: %lu)", 
-                               last_known_pose_.position.x, last_known_pose_.position.y, current_goal_id);
+                    RCLCPP_INFO(this->get_logger(), "Navigation result pose: x=%.2f, y=%.2f (goal_id: %lu, code: %d)", 
+                               last_known_pose_.position.x, last_known_pose_.position.y,
+                               current_goal_id, static_cast<int>(result.code));
+                } else {
+                    RCLCPP_WARN(this->get_logger(), "Navigation result did not include final pose (goal_id: %lu, code: %d)",
+                               current_goal_id, static_cast<int>(result.code));
                 }
                 
                 action_completed_ = true;
@@ -535,8 +574,8 @@ private:
                         switch (cancel_response->return_code) {
                             case action_msgs::srv::CancelGoal_Response::ERROR_NONE:
                                 RCLCPP_INFO(this->get_logger(), "Goal cancellation accepted");
-                                action_completed_ = true;
-                                action_succeeded_ = false;
+                                // Wait for the action result callback (CANCELED/ABORTED/SUCCEEDED)
+                                // so we can capture final_pose consistently.
                                 break;
                             case action_msgs::srv::CancelGoal_Response::ERROR_REJECTED:
                                 RCLCPP_WARN(this->get_logger(), "Goal cancellation rejected");
