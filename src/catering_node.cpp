@@ -328,6 +328,7 @@ private:
         
         // Search radius is catering radius plus current distance to center plus some extra for collision avoidance
         request->radius = catering_radius_ + distance_to_center + frontal_colition_avoidance_distance;
+        request->random_spot = true;
 
         find_free_spot_client_->async_send_request(request,
             [this, frontal_colition_avoidance_distance](rclcpp::Client<rogue_droids_interfaces::srv::FindFreeSpot>::SharedFuture result) {
@@ -407,16 +408,9 @@ private:
                 }
             };
             
-        send_goal_options.feedback_callback = 
-            [this, current_goal_id](rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr,
-                   const std::shared_ptr<const rogue_droids_interfaces::action::GoToRelativePose::Feedback> feedback) {
-                RCLCPP_INFO(this->get_logger(),
-                           "GoToRelativePose feedback (goal_id: %lu, state: %s): distance_remaining=%.3f m, angle_error=%.3f rad",
-                           current_goal_id,
-                           getStateName(current_state_).c_str(),
-                           feedback->distance_remaining,
-                           feedback->angle_error);
-            };
+        send_goal_options.feedback_callback =
+            [](rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::SharedPtr,
+               const std::shared_ptr<const rogue_droids_interfaces::action::GoToRelativePose::Feedback>) {};
             
         send_goal_options.result_callback = 
             [this, current_goal_id](const rclcpp_action::ClientGoalHandle<rogue_droids_interfaces::action::GoToRelativePose>::WrappedResult & result) {
