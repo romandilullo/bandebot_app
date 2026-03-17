@@ -38,8 +38,8 @@ using namespace std::chrono_literals;
 
 #define MAX_TIME_REACHING_POSE 120.0
 #define MAX_TIME_WAITING_SERVING_START_STOP 3.0
-#define MAX_TIME_WAITING_NAV_CANCEL 3.0
-#define MAX_TIME_WAITING_SPOT_SEARCH 3.0
+#define MAX_TIME_WAITING_NAV_CANCEL 5.0
+#define MAX_TIME_WAITING_SPOT_SEARCH 5.0
 
 class CateringNode : public rclcpp::Node {
 public:
