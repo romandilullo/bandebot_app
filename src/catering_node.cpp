@@ -585,6 +585,12 @@ private:
                                 action_succeeded_ = false;
                                 current_goal_handle_.reset();
                                 break;
+                            case action_msgs::srv::CancelGoal_Response::ERROR_GOAL_TERMINATED:
+                                RCLCPP_INFO(this->get_logger(), "Goal cancellation skipped: goal already terminated");
+                                action_completed_ = true;
+                                action_succeeded_ = false;
+                                current_goal_handle_.reset();
+                                break;
                             default:
                                 RCLCPP_ERROR(this->get_logger(), "Unknown cancellation response code: %d", cancel_response->return_code);
                                 // Force completion on unknown response
