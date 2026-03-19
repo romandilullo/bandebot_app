@@ -340,24 +340,37 @@ private:
                             adjusted_distance = 0.0;
                         }
 
-                        const double relative_x = adjusted_distance * std::cos(response->course_angle);
-                        const double relative_y = adjusted_distance * std::sin(response->course_angle);
+                        // If there is no place to go ahead, turn 180 degrees to open up new options instead of trying to move into an extremely tight spot or just giving up.
+                        if (adjusted_distance == 0.0) {
 
-                        RCLCPP_INFO(this->get_logger(),
-                                   "Free spot found: angle=%.2f deg, raw_distance=%.2f m, adjusted_distance=%.2f m, relative=(%.2f, %.2f)",
-                                   response->course_angle * 180.0 / M_PI,
-                                   response->course_distance,
-                                   adjusted_distance,
-                                   relative_x,
-                                   relative_y);
+                            RCLCPP_WARN(this->get_logger(),
+                                "Free spot too close after collision avoidance margin (raw=%.2f m). Rotating 180° to open new options.",
+                                response->course_distance);
+                            call_navigation_action(0.0, 0.0, M_PI);
+                            setState(BANDEBOT_CATERING_STATE::Turning180Degrees);
+                            
+                        } else {
 
-                        // Calculate corrected relative pose within catering radius and pointing towards initial pose
-                        auto [corrected_x, corrected_y, corrected_w] = calculateCorrectedRelativePose(
-                            relative_x, relative_y);
+                            const double relative_x = adjusted_distance * std::cos(response->course_angle);
+                            const double relative_y = adjusted_distance * std::sin(response->course_angle);
 
-                        // Call navigation with corrected values
-                        call_navigation_action(corrected_x, corrected_y, corrected_w);
-                        setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
+                            RCLCPP_INFO(this->get_logger(),
+                                    "Free spot found: angle=%.2f deg, raw_distance=%.2f m, adjusted_distance=%.2f m, relative=(%.2f, %.2f)",
+                                    response->course_angle * 180.0 / M_PI,
+                                    response->course_distance,
+                                    adjusted_distance,
+                                    relative_x,
+                                    relative_y);
+
+                            // Calculate corrected relative pose within catering radius and pointing towards initial pose
+                            auto [corrected_x, corrected_y, corrected_w] = calculateCorrectedRelativePose(
+                                relative_x, relative_y);
+
+                            // Call navigation with corrected values
+                            call_navigation_action(corrected_x, corrected_y, corrected_w);
+                            setState(BANDEBOT_CATERING_STATE::MovingToEmptySpot);
+                        }
+
                     } else {
                         RCLCPP_WARN(this->get_logger(), "Failed to find free spot: %s. Using fallback navigation after brief delay.", 
                                    response->message.c_str());
