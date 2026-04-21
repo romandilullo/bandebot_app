@@ -34,12 +34,14 @@ using namespace std::chrono_literals;
 #define MIN_CATERING_TIME 10.0
 #define MAX_CATERING_TIME 120.0
 #define MIN_CATERING_RADIUS 1.0
-#define MAX_CATERING_RADIUS 5.0
+#define MAX_CATERING_RADIUS 10.0
 
 #define MAX_TIME_REACHING_POSE 60.0
 #define MAX_TIME_WAITING_SERVING_START_STOP 3.0
 #define MAX_TIME_WAITING_NAV_CANCEL 5.0
 #define MAX_TIME_WAITING_SPOT_SEARCH 5.0
+
+// #define _SERVING_DEBUG_MODE_DONT_MOVE_
 
 class CateringNode : public rclcpp::Node {
 public:
@@ -166,8 +168,19 @@ private:
         catering_radius_ = request->catering_radius;
         on_spot_catering_time_ = request->on_spot_catering_time;
 
-        // Get current pose and store locally
-        call_get_current_pose();
+        #ifndef _SERVING_DEBUG_MODE_DONT_MOVE_
+
+            // Get current pose and store locally
+            call_get_current_pose();
+
+        #else
+
+            RCLCPP_WARN(this->get_logger(), "START_CATERING called in SERVING_DEBUG_MODE - skipping pose retrieval and navigation");
+            initial_pose_valid_ = false; // Force using uncorrected relative pose since we won't have a valid initial pose
+            setState(BANDEBOT_CATERING_STATE::WaitingServingStarted);
+            call_start_serving();
+
+        #endif
 
         response->success = true;
         response->message = "Catering started successfully";
@@ -775,8 +788,7 @@ private:
                 // Check if on-spot catering time has elapsed
                 if (elapsed_in_state >= on_spot_catering_time_) {
                     call_stop_serving();
-                    call_find_free_spot();
-                    RCLCPP_INFO(this->get_logger(), "On-spot catering time completed, finding new spot");
+                    setState(BANDEBOT_CATERING_STATE::WaitingServingStopped);
                 }
                 
                 // Safety check: if app state changes away from Serving during ServingFood
@@ -792,7 +804,19 @@ private:
 
                 if( current_app_state_ == BANDEBOT_APP_STATE::ReadyLoaded) {
 
-                    call_find_free_spot();
+                    #ifndef _SERVING_DEBUG_MODE_DONT_MOVE_
+
+                        call_find_free_spot();
+                        RCLCPP_INFO(this->get_logger(), "On-spot catering time completed, finding new spot");
+
+                    #else
+
+                        RCLCPP_WARN(this->get_logger(), "Serving Stopped called in SERVING_DEBUG_MODE - Go straight to serving food again");
+                        setState(BANDEBOT_CATERING_STATE::WaitingServingStarted);
+                        call_start_serving();
+                        RCLCPP_INFO(this->get_logger(), "POSE reached, now serving food");
+
+                    #endif
 
                 } else if (elapsed_in_state >= MAX_TIME_WAITING_SERVING_START_STOP) {
                     RCLCPP_ERROR(this->get_logger(), "Timeout waiting for serving to stop");
