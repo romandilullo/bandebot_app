@@ -37,11 +37,12 @@ using namespace std::chrono_literals;
 #define MAX_CATERING_RADIUS 10.0
 
 #define MAX_TIME_REACHING_POSE 60.0
-#define MAX_TIME_WAITING_SERVING_START_STOP 3.0
+#define MAX_TIME_WAITING_START_SERVING 5.0
+#define MAX_TIME_WAITING_STOP_SERVING 60.0
 #define MAX_TIME_WAITING_NAV_CANCEL 5.0
 #define MAX_TIME_WAITING_SPOT_SEARCH 5.0
 
-// #define _SERVING_DEBUG_MODE_DONT_MOVE_
+#define _SERVING_DEBUG_MODE_DONT_MOVE_
 
 class CateringNode : public rclcpp::Node {
 public:
@@ -777,7 +778,7 @@ private:
 
                     setState(BANDEBOT_CATERING_STATE::ServingFood);
 
-                } else if (elapsed_in_state >= MAX_TIME_WAITING_SERVING_START_STOP) {
+                } else if (elapsed_in_state >= MAX_TIME_WAITING_START_SERVING) {
                     RCLCPP_ERROR(this->get_logger(), "Timeout waiting for serving to start");
                     setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                 }   
@@ -818,7 +819,7 @@ private:
 
                     #endif
 
-                } else if (elapsed_in_state >= MAX_TIME_WAITING_SERVING_START_STOP) {
+                } else if (elapsed_in_state >= MAX_TIME_WAITING_STOP_SERVING) {
                     RCLCPP_ERROR(this->get_logger(), "Timeout waiting for serving to stop");
                     setState(BANDEBOT_CATERING_STATE::ReturningToStandby);
                 }   

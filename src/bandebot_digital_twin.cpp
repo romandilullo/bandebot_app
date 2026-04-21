@@ -199,6 +199,23 @@ bool BandebotTwin::CheckIfAllTraysFull() {
 }
 
 
+bool BandebotTwin::CheckIfAllTraysEmptyorOccupied() {
+
+    bool allEmptyOrOccupied = true;
+
+    for (int index = 0; index < APP_ELEVATOR_COUNT; index++) {    
+        
+        if( (elevators[index].GetContentState() != TRAY_CONTENT_STATE::Empty) &&
+            (elevators[index].GetContentState() != TRAY_CONTENT_STATE::Occupied)) {
+
+            allEmptyOrOccupied = false;
+            break;
+        }
+    }
+    return allEmptyOrOccupied;
+}
+
+
 bool BandebotTwin::StartCalibration(uint16_t mode) {
 
     mode = mode;
@@ -300,7 +317,7 @@ bool BandebotTwin::StopServing(uint16_t mode) {
 
     if( currentBandebotState == BANDEBOT_APP_STATE::Serving )
     {
-        currentBandebotState = BANDEBOT_APP_STATE::ReadyLoaded;
+        currentBandebotState = BANDEBOT_APP_STATE::FinishingServing;
         return true;
     }
 
