@@ -42,7 +42,7 @@ using namespace std::chrono_literals;
 #define MAX_TIME_WAITING_NAV_CANCEL 5.0
 #define MAX_TIME_WAITING_SPOT_SEARCH 5.0
 
-#define _SERVING_DEBUG_MODE_DONT_MOVE_
+// #define _SERVING_DEBUG_MODE_DONT_MOVE_
 
 class CateringNode : public rclcpp::Node {
 public:
