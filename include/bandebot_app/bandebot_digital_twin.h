@@ -104,7 +104,8 @@ public:
     void ProcessPowerSupplyState(rclcpp::Time time_stamp, uint16_t batteryVoltage, int16_t UCUCurrent, 
                                  int16_t ECUCurrent, int16_t MotorCurrent);
 
-    bool IsApplicationHwReady();
+    bool IsBandebotHwReady();
+    bool IsPromobotHwReady();
     bool IsApplicationCalibrated();
     bool CheckIfAllTraysEmpty();
     bool CheckIfAllTraysFull();
@@ -138,6 +139,16 @@ public:
     BOARD_STATUS elevatorControlUnit2Status = BOARD_STATUS::UNKNOWN;
     rclcpp::Time elevatorControlUnit2LastUpdate;
     int16_t elevatorControlUnit2CanErrorCount = 0;
+
+    bool displayControlUnitPresent       = false;
+    BOARD_STATUS displayControlUnitStatus = BOARD_STATUS::UNKNOWN;
+    rclcpp::Time displayControlUnitLastUpdate;
+    int16_t displayControlUnitCanErrorCount = 0;
+
+    bool lightsControlUnitPresent       = false;
+    BOARD_STATUS lightsControlUnitStatus = BOARD_STATUS::UNKNOWN;
+    rclcpp::Time lightsControlUnitLastUpdate;
+    int16_t lightsControlUnitCanErrorCount = 0;
 
 
     MULITA_ROBOT_STATE currentMobileBaseState  = MULITA_ROBOT_STATE::Unknown;

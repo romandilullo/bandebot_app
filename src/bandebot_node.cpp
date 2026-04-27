@@ -196,7 +196,7 @@ private:
 
                 // UpdateSidelightsMode(SIDELIGHTS_MODE::Flashing, SIDELIGHTS_COLOR::Orange);
 
-                if( bandebot_twin_.IsApplicationHwReady() )
+                if( bandebot_twin_.IsBandebotHwReady() )
                 {
                     bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ApplicationReady;
                 }

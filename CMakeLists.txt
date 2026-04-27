@@ -18,6 +18,9 @@ find_package(tf2_geometry_msgs REQUIRED)
 add_executable(bandebot_node src/bandebot_node.cpp src/bandebot_digital_twin.cpp)
 ament_target_dependencies(bandebot_node rclcpp rogue_droids_interfaces geometry_msgs)
 
+add_executable(promobot_node src/promobot_node.cpp src/bandebot_digital_twin.cpp)
+ament_target_dependencies(promobot_node rclcpp rogue_droids_interfaces geometry_msgs)
+
 add_executable(catering_node src/catering_node.cpp)
 ament_target_dependencies(catering_node rclcpp rclcpp_action rogue_droids_interfaces std_msgs tf2 tf2_geometry_msgs)
 
@@ -31,7 +34,12 @@ target_include_directories(catering_node PUBLIC
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 target_compile_features(catering_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
-install(TARGETS bandebot_node catering_node
+target_include_directories(promobot_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_compile_features(promobot_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+
+install(TARGETS bandebot_node promobot_node catering_node
   DESTINATION lib/${PROJECT_NAME})
 
 install(

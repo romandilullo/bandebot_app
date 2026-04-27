@@ -42,6 +42,17 @@ void BandebotTwin::ProcessHwInformation(rclcpp::Time time_stamp, uint8_t board_i
             elevatorControlUnit2CanErrorCount = can_error_count;
             elevatorControlUnit2LastUpdate = time_stamp;
             break;
+        case BOARD_ID::DCU:
+            displayControlUnitPresent = true;
+            displayControlUnitStatus = (BOARD_STATUS)board_status;
+            displayControlUnitCanErrorCount = can_error_count;
+            displayControlUnitLastUpdate = time_stamp;
+            break;
+        case BOARD_ID::LCU:
+            lightsControlUnitPresent = true;
+            lightsControlUnitStatus = (BOARD_STATUS)board_status;
+            lightsControlUnitCanErrorCount = can_error_count;
+            lightsControlUnitLastUpdate = time_stamp;
         default:
             break;
     }
@@ -139,9 +150,14 @@ void BandebotTwin::ProcessPowerSupplyState(rclcpp::Time time_stamp, uint16_t bat
 }
 
 
-bool BandebotTwin::IsApplicationHwReady() {
+bool BandebotTwin::IsBandebotHwReady() {
 
     return ( upperControlUnitPresent && elevatorControlUnit1Present && elevatorControlUnit2Present);
+}
+
+bool BandebotTwin::IsPromobotHwReady() {
+
+    return ( auxiliaryControlUnitPresent /*&& lightsControlUnitPresent*/);
 }
 
 bool BandebotTwin::IsApplicationCalibrated() {
