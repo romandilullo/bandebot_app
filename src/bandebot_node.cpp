@@ -311,6 +311,12 @@ private:
                 */
             
                 if( bandebot_twin_.CheckIfAllTraysEmptyorOccupied() ) {
+
+                    bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ReadyLoaded;
+
+                } else if( elapsed_time.seconds() > FINISHING_SERVING_TIMEOUT_SEC ) {
+
+                    RCLCPP_INFO(this->get_logger(), "Finishing serving timedout after %f seconds", elapsed_time.seconds());
                     bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ReadyLoaded;
                 }
                 break;
@@ -404,7 +410,7 @@ private:
         std::shared_ptr<rogue_droids_interfaces::srv::Calibrate::Response> response)
     {
         response->success = bandebot_twin_.StartCalibration(request->mode);
-    operation_start_time_ = this->get_clock()->now();
+        operation_start_time_ = this->get_clock()->now();
     }
 
     void handle_srv_start_loading_(
@@ -447,6 +453,7 @@ private:
         std::shared_ptr<rogue_droids_interfaces::srv::StopServing::Response> response)
     {
         response->success = bandebot_twin_.StopServing(request->mode);
+        operation_start_time_ = this->get_clock()->now();
     }
     
 
