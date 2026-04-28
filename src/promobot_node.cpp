@@ -4,7 +4,7 @@
  * 
  * 
  * Created: 27/04/2026
- * Last Modified: 27/04/2026
+ * Last Modified: 28/04/2026
  * 
  *****************************************************************************/
 
@@ -34,6 +34,8 @@ public:
         bandebot_app_state_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("bandebot/app_state", 10);
         robot_hardware_status_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::RobotHardwareStatus>("bandebot/robot_hardware_status", 10);
         power_relays_control_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("mulita/power_relays_control", 10);
+        display_tray_lights_mode_publisher_ = this->create_publisher<rogue_droids_interfaces::msg::CanFrame>("bandebot/display_tray_lights_mode", 10);
+
 
         // Create subscribers
 
@@ -96,6 +98,7 @@ private:
     rclcpp::Publisher<rogue_droids_interfaces::msg::CanFrame>::SharedPtr bandebot_app_state_publisher_;
     rclcpp::Publisher<rogue_droids_interfaces::msg::RobotHardwareStatus>::SharedPtr robot_hardware_status_publisher_;
     rclcpp::Publisher<rogue_droids_interfaces::msg::CanFrame>::SharedPtr power_relays_control_publisher_;
+    rclcpp::Publisher<rogue_droids_interfaces::msg::CanFrame>::SharedPtr display_tray_lights_mode_publisher_;
 
     rclcpp::Subscription<rogue_droids_interfaces::msg::CanFrame>::SharedPtr mulita_robot_state_subscriber_;
     rclcpp::Subscription<rogue_droids_interfaces::msg::CanFrame>::SharedPtr power_supply_state_subscriber_;
@@ -252,6 +255,15 @@ private:
             } else if (last_bandebot_app_state_ == BANDEBOT_APP_STATE::Serving) {
                 setSidelights(SIDELIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 500);
             }
+
+            // Handle display tray lights based on state transitions
+            if (bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::ReadyLoaded) {
+                setDisplayTrayLightsMode(TRAYLIGHTS_MODE::RGBPalette, SIDELIGHTS_COLOR::White, 500, TRAYLIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 500);
+            } else if (bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Serving) {
+                setDisplayTrayLightsMode(TRAYLIGHTS_MODE::Roulette, SIDELIGHTS_COLOR::White, 25, TRAYLIGHTS_MODE::On, SIDELIGHTS_COLOR::White, 500);
+            } else {
+                setDisplayTrayLightsMode(TRAYLIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 1000, TRAYLIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 500);
+            }
             
             last_bandebot_app_state_ = bandebot_twin_.currentBandebotState;
             RCLCPP_INFO(this->get_logger(), "BANDEBOT APP STATE changed to: %u", static_cast<unsigned int>(bandebot_twin_.currentBandebotState));
@@ -347,6 +359,26 @@ private:
         
         RCLCPP_DEBUG(this->get_logger(), "Sidelights service call sent asynchronously");
     }
+
+    void setDisplayTrayLightsMode(TRAYLIGHTS_MODE lower_tray_mode, SIDELIGHTS_COLOR lower_tray_color, uint16_t lower_tray_period,
+                                TRAYLIGHTS_MODE upper_tray_mode, SIDELIGHTS_COLOR upper_tray_color, uint16_t upper_tray_period)
+    {
+        auto ros_msg = rogue_droids_interfaces::msg::CanFrame();
+
+        ros_msg.len = 8;
+        ros_msg.data[0] = (uint8_t)lower_tray_mode;
+        ros_msg.data[1] = (uint8_t)lower_tray_color;
+        ros_msg.data[2] = lower_tray_period & 0xFF; // LSB of period
+        ros_msg.data[3] = (lower_tray_period >> 8) & 0xFF; // MSB of period
+
+        ros_msg.data[4] = (uint8_t)upper_tray_mode;
+        ros_msg.data[5] = (uint8_t)upper_tray_color;
+        ros_msg.data[6] = upper_tray_period & 0xFF; // LSB of period
+        ros_msg.data[7] = (upper_tray_period >> 8) & 0xFF; // MSB of period
+
+        display_tray_lights_mode_publisher_->publish(ros_msg);
+    }
+
 };
 
 int main(int argc, char **argv)

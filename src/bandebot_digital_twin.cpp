@@ -157,7 +157,7 @@ bool BandebotTwin::IsBandebotHwReady() {
 
 bool BandebotTwin::IsPromobotHwReady() {
 
-    return ( auxiliaryControlUnitPresent /*&& lightsControlUnitPresent*/);
+    return ( auxiliaryControlUnitPresent && lightsControlUnitPresent);
 }
 
 bool BandebotTwin::IsApplicationCalibrated() {
