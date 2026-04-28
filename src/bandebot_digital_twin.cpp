@@ -340,6 +340,32 @@ bool BandebotTwin::StopServing(uint16_t mode) {
     return false;
 }
 
+bool BandebotTwin::StartDisplayMode(uint16_t mode) {
+
+    mode = mode;
+
+    if( currentBandebotState == BANDEBOT_APP_STATE::ReadyLoaded )
+    {
+        currentBandebotState = BANDEBOT_APP_STATE::Serving;
+        return true;
+    }
+
+    return false;
+}
+
+bool BandebotTwin::StopDisplayMode(uint16_t mode) {
+
+    mode = mode;
+
+    if( currentBandebotState == BANDEBOT_APP_STATE::Serving )
+    {
+        currentBandebotState = BANDEBOT_APP_STATE::ReadyLoaded;
+        return true;
+    }
+
+    return false;
+}
+
 bool BandebotTwin::SetSidelightsMode(SIDELIGHTS_MODE mode, SIDELIGHTS_COLOR color) {
 
     if( mode != currentSidelightsMode || color != currentSidelightsColor) {

@@ -119,6 +119,8 @@ public:
     bool StopUnloading(uint16_t mode);
     bool StartServing(uint16_t mode);
     bool StopServing(uint16_t mode);
+    bool StartDisplayMode(uint16_t mode);
+    bool StopDisplayMode(uint16_t mode);
   
     bool auxiliaryControlUnitPresent       = false;
     BOARD_STATUS auxiliaryControlUnitStatus = BOARD_STATUS::UNKNOWN;

@@ -48,11 +48,11 @@ public:
 
         // Create services
         srv_start_serving_ = this->create_service<rogue_droids_interfaces::srv::StartServing>(
-            std::string("promobot/start_serving"),
+            std::string("bandebot/start_serving"),
             std::bind(&PromobotNode::handle_srv_start_serving_, this, std::placeholders::_1, std::placeholders::_2));
         
         srv_stop_serving_ = this->create_service<rogue_droids_interfaces::srv::StopServing>(
-            std::string("promobot/stop_serving"),
+            std::string("bandebot/stop_serving"),
             std::bind(&PromobotNode::handle_srv_stop_serving_, this, std::placeholders::_1, std::placeholders::_2));
         
         // Create service client for sidelights control
@@ -213,14 +213,14 @@ private:
         const std::shared_ptr<rogue_droids_interfaces::srv::StartServing::Request> request,
         std::shared_ptr<rogue_droids_interfaces::srv::StartServing::Response> response)
     {
-        response->success = bandebot_twin_.StartServing(request->mode);
+        response->success = bandebot_twin_.StartDisplayMode(request->mode);
     }
     
     void handle_srv_stop_serving_(
         const std::shared_ptr<rogue_droids_interfaces::srv::StopServing::Request> request,
         std::shared_ptr<rogue_droids_interfaces::srv::StopServing::Response> response)
     {
-        response->success = bandebot_twin_.StopServing(request->mode);
+        response->success = bandebot_twin_.StopDisplayMode(request->mode);
     }
     
 
