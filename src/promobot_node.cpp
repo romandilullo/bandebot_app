@@ -258,12 +258,20 @@ private:
 
             // Handle display tray lights based on state transitions
             if (bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::ReadyLoaded) {
-                setDisplayTrayLightsMode(TRAYLIGHTS_MODE::RGBPalette, SIDELIGHTS_COLOR::White, 500, TRAYLIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 500);
+
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::RGBPalette, 0xFF, 0xFF, 0xFF, 500);
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::On, 0xFF, 0xFF, 0xFF, 500);
+ 
             } else if (bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Serving) {
-                setDisplayTrayLightsMode(TRAYLIGHTS_MODE::Roulette, SIDELIGHTS_COLOR::White, 25, TRAYLIGHTS_MODE::On, SIDELIGHTS_COLOR::White, 500);
+
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::Chasser, 0xFF, 0xFF, 0xFF, 25);
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::On, 0xFF, 0xFF, 0xFF, 500);
+ 
             } else {
-                setDisplayTrayLightsMode(TRAYLIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 1000, TRAYLIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 500);
-            }
+
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::Off, 0x00, 0x00, 0x00, 500);
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::Off, 0x00, 0x00, 0x00, 500);
+           }
             
             last_bandebot_app_state_ = bandebot_twin_.currentBandebotState;
             RCLCPP_INFO(this->get_logger(), "BANDEBOT APP STATE changed to: %u", static_cast<unsigned int>(bandebot_twin_.currentBandebotState));
@@ -360,21 +368,18 @@ private:
         RCLCPP_DEBUG(this->get_logger(), "Sidelights service call sent asynchronously");
     }
 
-    void setDisplayTrayLightsMode(TRAYLIGHTS_MODE lower_tray_mode, SIDELIGHTS_COLOR lower_tray_color, uint16_t lower_tray_period,
-                                TRAYLIGHTS_MODE upper_tray_mode, SIDELIGHTS_COLOR upper_tray_color, uint16_t upper_tray_period)
-    {
+    void setDisplayTrayLight(LIGHTS_TYPE type, TRAYLIGHTS_MODE mode, uint8_t red, uint8_t green, uint8_t blue, uint16_t period) {
+
         auto ros_msg = rogue_droids_interfaces::msg::CanFrame();
 
         ros_msg.len = 8;
-        ros_msg.data[0] = (uint8_t)lower_tray_mode;
-        ros_msg.data[1] = (uint8_t)lower_tray_color;
-        ros_msg.data[2] = lower_tray_period & 0xFF; // LSB of period
-        ros_msg.data[3] = (lower_tray_period >> 8) & 0xFF; // MSB of period
-
-        ros_msg.data[4] = (uint8_t)upper_tray_mode;
-        ros_msg.data[5] = (uint8_t)upper_tray_color;
-        ros_msg.data[6] = upper_tray_period & 0xFF; // LSB of period
-        ros_msg.data[7] = (upper_tray_period >> 8) & 0xFF; // MSB of period
+        ros_msg.data[0] = (uint8_t)type;
+        ros_msg.data[1] = (uint8_t)mode;
+        ros_msg.data[2] = red;
+        ros_msg.data[3] = green;
+        ros_msg.data[4] = blue;
+        ros_msg.data[5] = period & 0xFF; // LSB of period
+        ros_msg.data[6] = (period >> 8) & 0xFF; // MSB of period
 
         display_tray_lights_mode_publisher_->publish(ros_msg);
     }
