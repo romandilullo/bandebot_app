@@ -1,10 +1,10 @@
 /*****************************************************************************
  * 
- * Copyright 2025 Roman Di Lullo
+ * Copyright 2025-2026 Roman Di Lullo
  * 
  * 
  * Created: 23/04/2025
- * Last Modified: 04/11/2025
+ * Last Modified: 05/05/2026
  * 
  *****************************************************************************/
 
@@ -187,18 +187,17 @@ private:
 
                 messagePowerRelayControl(true, true);
 
+                setSidelights(SIDELIGHTS_MODE::Dimmering, SIDELIGHTS_COLOR::White, 500);
                 bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::IdentifyingHardware;
                 operation_start_time_ = this->get_clock()->now();                
-
                 break;
 
             case BANDEBOT_APP_STATE::IdentifyingHardware:
 
-                // UpdateSidelightsMode(SIDELIGHTS_MODE::Flashing, SIDELIGHTS_COLOR::Orange);
-
                 if( bandebot_twin_.IsBandebotHwReady() )
                 {
                     bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ApplicationReady;
+                    setSidelights(SIDELIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 500);
                 }
                 else
                 {
@@ -218,17 +217,15 @@ private:
             //---------------------------
 
             case BANDEBOT_APP_STATE::ApplicationReady:
-                // UpdateSidelightsMode(SIDELIGHTS_MODE::Off);
                 break;
 
             case BANDEBOT_APP_STATE::CalibratingHardware:
-
-                // UpdateSidelightsMode(SIDELIGHTS_MODE::Dimmering, SIDELIGHTS_COLOR::Blue);
 
                 // Verificar si estan todos los elavadores listos
                 if( bandebot_twin_.IsApplicationCalibrated() )
                 {
                     bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ReadyUnloaded;
+                    setSidelights(SIDELIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 500);
                 }
                 else
                 {
@@ -411,6 +408,10 @@ private:
     {
         response->success = bandebot_twin_.StartCalibration(request->mode);
         operation_start_time_ = this->get_clock()->now();
+
+        if(response->success) {
+            setSidelights(SIDELIGHTS_MODE::Dimmering, SIDELIGHTS_COLOR::Blue, 500);
+        }
     }
 
     void handle_srv_start_loading_(

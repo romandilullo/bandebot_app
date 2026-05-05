@@ -141,11 +141,11 @@ private:
 
             case BANDEBOT_APP_STATE::IdentifyingHardware:
 
-                // UpdateSidelightsMode(SIDELIGHTS_MODE::Flashing, SIDELIGHTS_COLOR::Orange);
 
                 if( bandebot_twin_.IsPromobotHwReady() )
                 {
                     bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ApplicationReady;
+                    setSidelights(SIDELIGHTS_MODE::Off, SIDELIGHTS_COLOR::Off, 500);
                 }
                 else
                 {
