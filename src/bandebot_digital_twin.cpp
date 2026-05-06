@@ -215,14 +215,15 @@ bool BandebotTwin::CheckIfAllTraysFull() {
 }
 
 
-bool BandebotTwin::CheckIfAllTraysEmptyorOccupied() {
+bool BandebotTwin::CheckIfTraysReadyToFinishService() {
 
     bool allEmptyOrOccupied = true;
 
     for (int index = 0; index < APP_ELEVATOR_COUNT; index++) {    
         
         if( (elevators[index].GetContentState() != TRAY_CONTENT_STATE::Empty) &&
-            (elevators[index].GetContentState() != TRAY_CONTENT_STATE::Occupied)) {
+            (elevators[index].GetContentState() != TRAY_CONTENT_STATE::Occupied) &&
+            (elevators[index].GetContentState() != TRAY_CONTENT_STATE::TheoreticallyEmpty)) {
 
             allEmptyOrOccupied = false;
             break;

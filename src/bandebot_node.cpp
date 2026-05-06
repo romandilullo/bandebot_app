@@ -307,7 +307,7 @@ private:
                     Do not move empty trays. If all trays are Empty or Occupied, switch to ReadyLoaded
                 */
             
-                if( bandebot_twin_.CheckIfAllTraysEmptyorOccupied() ) {
+                if( bandebot_twin_.CheckIfTraysReadyToFinishService() ) {
 
                     bandebot_twin_.currentBandebotState = BANDEBOT_APP_STATE::ReadyLoaded;
 

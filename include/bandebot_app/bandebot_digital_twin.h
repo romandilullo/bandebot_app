@@ -109,7 +109,7 @@ public:
     bool IsApplicationCalibrated();
     bool CheckIfAllTraysEmpty();
     bool CheckIfAllTraysFull();
-    bool CheckIfAllTraysEmptyorOccupied();
+    bool CheckIfTraysReadyToFinishService();
     bool SetSidelightsMode(SIDELIGHTS_MODE mode, SIDELIGHTS_COLOR color);
     
     bool StartCalibration(uint16_t mode);
