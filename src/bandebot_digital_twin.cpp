@@ -223,7 +223,8 @@ bool BandebotTwin::CheckIfTraysReadyToFinishService() {
         
         if( (elevators[index].GetContentState() != TRAY_CONTENT_STATE::Empty) &&
             (elevators[index].GetContentState() != TRAY_CONTENT_STATE::Occupied) &&
-            (elevators[index].GetContentState() != TRAY_CONTENT_STATE::TheoreticallyEmpty)) {
+            (elevators[index].GetContentState() != TRAY_CONTENT_STATE::TheoreticallyEmpty) &&
+            (elevators[index].GetContentState() != TRAY_CONTENT_STATE::PartiallyOccupied) ) {
 
             allEmptyOrOccupied = false;
             break;
