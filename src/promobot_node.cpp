@@ -19,6 +19,7 @@
 #include "../../mulita/include/bandebot_defines.h"
 
 #include "bandebot_app/bandebot_digital_twin.h"
+#include "bandebot_app/colors_define.h"
 
 class PromobotNode : public rclcpp::Node
 {
@@ -81,6 +82,7 @@ private:
 
     BandebotTwin bandebot_twin_;
     BANDEBOT_APP_STATE last_bandebot_app_state_  = BANDEBOT_APP_STATE::Unknown;
+    MULITA_ROBOT_STATE last_mobile_base_state_ = MULITA_ROBOT_STATE::Unknown;
     rclcpp::Time operation_start_time_;
 
     bool tray_content_state_updated = false;
@@ -247,7 +249,9 @@ private:
 
         bandebot_app_state_publisher_->publish(ros_msg);
 
-        if(bandebot_twin_.currentBandebotState != last_bandebot_app_state_)
+
+        // Update trays colours and sidelights based on state changes
+        if((bandebot_twin_.currentBandebotState != last_bandebot_app_state_) || (bandebot_twin_.currentMobileBaseState != last_mobile_base_state_))
         {
             // Handle sidelights based on state transitions
             if (bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Serving) {
@@ -259,21 +263,35 @@ private:
             // Handle display tray lights based on state transitions
             if (bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::ReadyLoaded) {
 
-                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::RGBPalette, 0xFF, 0xFF, 0xFF, 500);
-                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::On, 0xFF, 0xFF, 0xFF, 500);
- 
+                if( bandebot_twin_.currentMobileBaseState == MULITA_ROBOT_STATE::ReadyMoving ) {
+
+                    setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::On, GenericColor::LIGHT_BLUE, 500);
+                    setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::RGBPalette, GenericColor::WHITE, 500);
+
+                } else {
+
+                    setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::On, GenericColor::LIGHT_BLUE, 500);
+                    setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::On, GenericColor::LIGHT_BLUE, 500);
+                }
+
             } else if (bandebot_twin_.currentBandebotState == BANDEBOT_APP_STATE::Serving) {
 
-                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::Chasser, 0xFF, 0xFF, 0xFF, 25);
-                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::On, 0xFF, 0xFF, 0xFF, 500);
- 
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::On, GenericColor::LIGHT_BLUE, 500);
+
+                // Todo: Change lower tray mode and colors every 5 seconds to make it more dynamic
+                // setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::Chasser, GenericColor::LIGHT_BLUE, 25);
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::Dimmering, GenericColor::LIGHT_BLUE, 750);
+
+
             } else {
 
-                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::Off, 0x00, 0x00, 0x00, 500);
-                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::Off, 0x00, 0x00, 0x00, 500);
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayUpper, TRAYLIGHTS_MODE::Flashing, GenericColor::LIGHT_BLUE, 500);
+                setDisplayTrayLight(LIGHTS_TYPE::DisplayTrayLower, TRAYLIGHTS_MODE::Flashing, GenericColor::LIGHT_BLUE, 500);
+
            }
             
             last_bandebot_app_state_ = bandebot_twin_.currentBandebotState;
+            last_mobile_base_state_ = bandebot_twin_.currentMobileBaseState;
             RCLCPP_INFO(this->get_logger(), "BANDEBOT APP STATE changed to: %u", static_cast<unsigned int>(bandebot_twin_.currentBandebotState));
         }
     }
@@ -368,16 +386,16 @@ private:
         RCLCPP_DEBUG(this->get_logger(), "Sidelights service call sent asynchronously");
     }
 
-    void setDisplayTrayLight(LIGHTS_TYPE type, TRAYLIGHTS_MODE mode, uint8_t red, uint8_t green, uint8_t blue, uint16_t period) {
+    void setDisplayTrayLight(LIGHTS_TYPE type, TRAYLIGHTS_MODE mode, GenericColor color, uint16_t period) {
 
         auto ros_msg = rogue_droids_interfaces::msg::CanFrame();
 
         ros_msg.len = 8;
         ros_msg.data[0] = (uint8_t)type;
         ros_msg.data[1] = (uint8_t)mode;
-        ros_msg.data[2] = red;
-        ros_msg.data[3] = green;
-        ros_msg.data[4] = blue;
+        ros_msg.data[2] = color.getRed();   // Red
+        ros_msg.data[3] = color.getGreen(); // Green
+        ros_msg.data[4] = color.getBlue();  // Blue
         ros_msg.data[5] = period & 0xFF; // LSB of period
         ros_msg.data[6] = (period >> 8) & 0xFF; // MSB of period
 
